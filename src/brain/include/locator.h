@@ -30,7 +30,7 @@ public:
   double enableLog = false;
   string logIP = "127.0.0.1:9876";
 
-  const rerun::RecordingStream log = rerun::RecordingStream("locator", "locator");
+  rerun::RecordingStream log = rerun::RecordingStream("locator", "locator");
   vector<FieldMarker> fieldMarkers;
   FieldDimensions fieldDimensions;
   Eigen::ArrayXXd hypos;
@@ -71,6 +71,7 @@ public:
   };
 
   void logParticles();
+  void logParticles(double);
 
   rerun::RecordingStream *logger = nullptr;
   void setLog(rerun::RecordingStream *stream);

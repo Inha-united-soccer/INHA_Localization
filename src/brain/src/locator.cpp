@@ -9,6 +9,12 @@
 #define REGISTER_LOCATOR_BUILDER(Name)                                                                                                                         \
   factory.registerBuilder<Name>(#Name, [brain](const string &name, const NodeConfig &config) { return make_unique<Name>(name, config, brain); });
 
+double gaussianRandom(double mean, double stddev) {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  std::normal_distribution<double> d(mean, stddev);
+  return d(gen);
+}
 void RegisterLocatorNodes(BT::BehaviorTreeFactory &factory, Brain *brain) {
   REGISTER_LOCATOR_BUILDER(SelfLocate);
   REGISTER_LOCATOR_BUILDER(SelfLocateEnterField);
@@ -20,8 +26,8 @@ void RegisterLocatorNodes(BT::BehaviorTreeFactory &factory, Brain *brain) {
   REGISTER_LOCATOR_BUILDER(SelfLocate2X);
 }
 
-void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double sensorNoise,
-                          std::vector<double> alphas, double alphaSlow, double alphaFast, double injectionRatio) {
+void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
+                          double injectionRatio) {
   pfNumParticles = numParticles;
   pfInitFieldMargin = initMargin;
   pfInitOwnHalfOnly = ownHalf;
@@ -46,6 +52,7 @@ void Locator::init(FieldDimensions fd, int minMarkerCntParam, double residualTol
   enableLog = enableLogParam;
   logIP = logIPParam;
   if (enableLog) {
+    logger = &log;
     auto connectError = log.connect(logIP);
     if (connectError.is_err()) prtErr(format("Rerun log connect Error: %s", connectError.description.c_str()));
     auto saveError = log.save("/home/booster/log.rrd");
@@ -631,12 +638,7 @@ void Locator::logParticles() {
   log.log("field/hypos", rerun::Points2D(points).with_draw_order(20.0).with_colors({rerun::Color{255, 0, 0, 255}}).with_radii({0.05}).with_draw_order(20));
 }
 
-double gaussianRandom(double mean, double stddev) {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  std::normal_distribution<double> d(mean, stddev);
-  return d(gen);
-}
+
 
 NodeStatus SelfLocate::tick() {
   auto log = [=](string msg) {
