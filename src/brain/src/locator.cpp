@@ -112,7 +112,7 @@ void Locator::globalInitPF(Pose2D currentOdom) {
   std::srand(std::time(0));
   for (int i = 0; i < num; i++) {
     pfParticles[i].x = xMin + ((double)rand() / RAND_MAX) * (xMax - xMin);
-    pfParticles[i].y = yMin + ((double)rand() / RAND_MAX / RAND_MAX) * (yMax - yMin);
+    pfParticles[i].y = yMin + ((double)rand() / RAND_MAX) * (yMax - yMin);
     // Face Y-Axis with +/- 30 degrees offset
     double thetaSpread = deg2rad(30.0);
     double thetaCenter;
@@ -235,7 +235,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
   // --- Augmented MCL: Update w_slow and w_fast ---
   // DISABLED by user request; favoring pure localization from good init
   // To re-enable, uncomment the injection logic below.
-  double p_inject = 0.0;
+  double p_inject = 0.05;
   /*
   if (w_slow == 0.0)
     w_slow = avgWeight;
@@ -260,7 +260,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       sqSum += p.weight * p.weight;
     double ess = 1.0 / (sqSum + 1e-9);
 
-    if (ess < pfParticles.size() * 0.2) {
+    if (ess < pfParticles.size() * 0.4) {
       vector<Particle> newParticles;
       newParticles.reserve(pfParticles.size());
       int M = pfParticles.size();
@@ -314,10 +314,9 @@ Pose2D Locator::getEstimatePF() {
   };
 
   std::vector<Cluster> clusters;
-  const double CLUSTER_DIST_THR = 1.5;
+  const double CLUSTER_DIST_THR = 0.5;
 
-  // Sort indices by weight descending to use high-weight particles as cluster
-  // seeds
+  // Sort indices by weight descending to use high-weight particles as cluster seeds
   std::vector<int> sortedIndices(pfParticles.size());
   std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
   std::sort(sortedIndices.begin(), sortedIndices.end(), [&](int a, int b) { return pfParticles[a].weight > pfParticles[b].weight; });
