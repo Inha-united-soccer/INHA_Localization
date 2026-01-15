@@ -54,29 +54,33 @@ brain_node:
       chase_ao_safe_dist: 3.5 
 
     locator:
+      pf_cluster_dist_gate: 0.5
+      pf_cluster_theta_gate: 0.3
+      
+      pf_smooth_alpha: 0.9 # 반영비율
+
+      pf_zeromotion_trans_thresh: 0.05 #m
+      pf_zeromotion_rot_thresh: 0.05 # 라디안
+
+
+      pf_sensor_noise: 1.0 # R
+
+      pf_alpha_1: 0.01 #rot -> rot
+      pf_alpha_2: 0.001 #trans -> rot 
+      pf_alpha_3: 0.01 # trans-> trans
+      pf_alpha_4: 0.01 #rot->trans
+
+
       min_marker_count: 5
       max_residual: 0.35 
       init_own_half_only: true
-      pf_cluster_dist_gate: 0.3
-      pf_cluster_theta_gate: 20.0 #degree
-      pf_smooth_alpha: 0.6
-      pf_injection_ratio: 0.2
+      pf_injection_ratio: 0.01
       pf_alpha_slow: 0.05
       pf_alpha_fast: 0.5
-
-      pf_zeromotion_trans_thresh: 0.001
-      pf_zeromotion_rot_thresh: 0.01 # 라디안
       pf_resample_when_stopped: false
-
-
       num_particles: 180
       init_field_margin: 0.5
-      pf_sensor_noise: 0.56
-      pf_alpha_1: 0.05 #rot -> rot
-      pf_alpha_2: 0.009 #rot -> trans 
-      pf_alpha_3: 0.001 # trans-> rot
-      pf_alpha_4: 0.001 #trans->trans
-
+      
 
     enable_com: false 
 
