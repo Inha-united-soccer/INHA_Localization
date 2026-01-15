@@ -258,7 +258,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 
   // Resampling (Low Variance + Random Injection)
   // Only resample if robot is moving or user forced it
-  if (isRobotMoving || pfResampleWhenStopped) {
+  if (pfResampleWhenStopped) {
     double sqSum = 0;
     for (auto &p : pfParticles)
       sqSum += p.weight * p.weight;
