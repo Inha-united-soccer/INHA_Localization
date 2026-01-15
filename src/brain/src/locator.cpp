@@ -173,7 +173,7 @@ void Locator::predictPF(Pose2D currentOdomPose) {
   double trans_y = -s * dx + c * dy;
   double rot1 = atan2(trans_y, trans_x);
   double trans = sqrt(trans_x * trans_x + trans_y * trans_y);
-  double rot2 = dtheta - rot1;
+  double rot2 = (dtheta - rot1);
 
   double alpha1 = pfAlpha1;
   double alpha2 = pfAlpha2;
@@ -267,7 +267,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       sqSum += p.weight * p.weight;
     double ess = 1.0 / (sqSum + 1e-9);
 
-    if (ess < pfParticles.size() * 0.1) {
+    if (ess < pfParticles.size() * 0.3) {
       vector<Particle> newParticles;
       newParticles.reserve(pfParticles.size());
       int M = pfParticles.size();
@@ -322,21 +322,19 @@ Pose2D Locator::getEstimatePF() {
   };
 
   std::vector<Cluster> clusters;
-  // const double CLUSTER_DIST_THR = 0.3; // Replaced by pfClusterDistThr
 
-  // Sort indices by weight descending to use high-weight particles as cluster seeds
+  // Sort
   std::vector<int> sortedIndices(pfParticles.size());
   std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
   std::sort(sortedIndices.begin(), sortedIndices.end(), [&](int a, int b) { return pfParticles[a].weight > pfParticles[b].weight; });
 
-  // 1. Particle Clustering
+  // clustering
   for (int idx : sortedIndices) {
     auto &p = pfParticles[idx];
     bool added = false;
     for (auto &c : clusters) {
-      // Distance check
+      // 게이팅
       double d = std::hypot(p.x - c.leaderX, p.y - c.leaderY);
-      // Theta check (Theta Gate)
       double dTheta = std::fabs(toPInPI(p.theta - c.leaderTheta));
 
       if (d < pfClusterDistThr && dTheta < pfClusterThetaThr) {
@@ -363,7 +361,7 @@ Pose2D Locator::getEstimatePF() {
     }
   }
 
-  // 3. Choose the cluster with the largest weight
+  // 3. 가장 큰 가중치를 가진 클러스터 선택
   int bestClusterIdx = -1;
   double maxWeight = -1.0;
 
@@ -376,16 +374,16 @@ Pose2D Locator::getEstimatePF() {
 
   if (bestClusterIdx == -1) return {0, 0, 0};
 
-  // 4. Pose = average of that cluster
+  // 4. 가중평균
   Pose2D rawEstPose;
   auto &bestC = clusters[bestClusterIdx];
   if (bestC.totalWeight > 0) {
-    rawEstPose = Pose2D{bestC.xSum / bestC.totalWeight, bestC.ySum / bestC.totalWeight, atan2(bestC.sinSum, bestC.cosSum)};
+    rawEstPose = Pose2D{bestC.xSum / bestC.totalWeight, bestC.ySum / bestC.totalWeight, atan2(bestC.sinSum, bestC.cosSum)}; // 기댓값
   } else {
     rawEstPose = Pose2D{bestC.leaderX, bestC.leaderY, bestC.leaderTheta};
   }
 
-  // 5. Exponential Moving Average (EMA) Smoothing
+  // 5. EMA smoothing
   if (!hasSmoothedPose) {
     smoothedPose = rawEstPose;
     hasSmoothedPose = true;
