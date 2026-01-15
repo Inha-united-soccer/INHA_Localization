@@ -106,13 +106,18 @@ public:
   double pfInitFieldMargin = 1.0;
   bool pfInitOwnHalfOnly = true;
 
-  double pfAlpha1 = 0.1;
-  double pfAlpha2 = 0.05;
-  double pfAlpha3 = 0.05;
-  double pfAlpha4 = 0.01;
+  double pfAlpha1 = 0.08; //rot -> rot
+  double pfAlpha2 = 0.005; //rot -> trans
+  double pfAlpha3 = 0.005; //trans -> rot
+  double pfAlpha4 = 0.005; //trans -> trans
+
+  double pfZeroMotionTransThresh = 0.01;
+  double pfZeroMotionRotThresh = 0.03;
+  bool pfResampleWhenStopped = false;
+  bool isRobotMoving = true;
 
   void setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
-                   double injectionRatio);
+                   double injectionRatio, double zeroMotionTransThresh = 0.001, double zeroMotionRotThresh = 0.002, bool resampleWhenStopped = false);
 };
 
 class Brain;

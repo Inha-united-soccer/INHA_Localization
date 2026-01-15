@@ -62,7 +62,7 @@ void Locator::calcFieldMarkers(FieldDimensions fd) {
 }
 
 void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
-                          double injectionRatio) {
+                          double injectionRatio, double zeroMotionTransThresh, double zeroMotionRotThresh, bool resampleWhenStopped) {
   pfNumParticles = numParticles;
   pfInitFieldMargin = initMargin;
   pfInitOwnHalfOnly = ownHalf;
@@ -76,6 +76,9 @@ void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, dou
   alpha_slow = alphaSlow;
   alpha_fast = alphaFast;
   pfInjectionRatio = injectionRatio;
+  pfZeroMotionTransThresh = zeroMotionTransThresh;
+  pfZeroMotionRotThresh = zeroMotionRotThresh;
+  pfResampleWhenStopped = resampleWhenStopped;
 }
 
 void Locator::init(FieldDimensions fd, int minMarkerCntParam, double residualToleranceParam, double muOffestParam, bool enableLogParam, string logIPParam) {
@@ -144,6 +147,19 @@ void Locator::predictPF(Pose2D currentOdomPose) {
   double dy = currentOdomPose.y - lastPFOdomPose.y;
   double dtheta = toPInPI(currentOdomPose.theta - lastPFOdomPose.theta);
 
+  // Zero-Motion Gate
+  double transDist = sqrt(dx * dx + dy * dy);
+  double rotDist = fabs(dtheta);
+
+  if (transDist < pfZeroMotionTransThresh && rotDist < pfZeroMotionRotThresh) {
+    dx = 0;
+    dy = 0;
+    dtheta = 0;
+    isRobotMoving = false;
+  } else {
+    isRobotMoving = true;
+  }
+
   double c = cos(lastPFOdomPose.theta);
   double s = sin(lastPFOdomPose.theta);
   double trans_x = c * dx + s * dy; // 로봇좌표계로
@@ -152,10 +168,10 @@ void Locator::predictPF(Pose2D currentOdomPose) {
   double trans = sqrt(trans_x * trans_x + trans_y * trans_y);
   double rot2 = dtheta - rot1;
 
-  double alpha1 = pfAlpha1; // rot -> rot
-  double alpha2 = pfAlpha2; // trans -> rot
-  double alpha3 = pfAlpha3; // trans -> trans
-  double alpha4 = pfAlpha4; // rot -> trans
+  double alpha1 = pfAlpha1;
+  double alpha2 = pfAlpha2;
+  double alpha3 = pfAlpha3;
+  double alpha4 = pfAlpha4;
 
   for (auto &p : pfParticles) {
     double n_rot1 = rot1 + (gaussianRandom(0, alpha1 * fabs(rot1) + alpha2 * trans));
@@ -237,48 +253,50 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
   */
 
   // Resampling (Low Variance + Random Injection)
-  double sqSum = 0;
-  for (auto &p : pfParticles)
-    sqSum += p.weight * p.weight;
-  double ess = 1.0 / (sqSum + 1e-9);
+  // Only resample if robot is moving or user forced it
+  if (isRobotMoving || pfResampleWhenStopped) {
+    double sqSum = 0;
+    for (auto &p : pfParticles)
+      sqSum += p.weight * p.weight;
+    double ess = 1.0 / (sqSum + 1e-9);
 
-  if (ess < pfParticles.size() * 0.5) {
-    vector<Particle> newParticles;
-    newParticles.reserve(pfParticles.size());
-    int M = pfParticles.size();
-    double r = ((double)rand() / RAND_MAX) * (1.0 / M);
-    double c = pfParticles[0].weight;
-    int i = 0;
+    if (ess < pfParticles.size() * 0.2) {
+      vector<Particle> newParticles;
+      newParticles.reserve(pfParticles.size());
+      int M = pfParticles.size();
+      double r = ((double)rand() / RAND_MAX) * (1.0 / M);
+      double c = pfParticles[0].weight;
+      int i = 0;
 
-    // Parameters for random injection
-    // Parameters for random injection
-    double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
-    double xMax = pfInitOwnHalfOnly ? 1.0 : (fieldDimensions.length / 2.0 + pfInitFieldMargin);
-    double yMin = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
-    double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
+      // Parameters for random injection
+      double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
+      double xMax = pfInitOwnHalfOnly ? 1.0 : (fieldDimensions.length / 2.0 + pfInitFieldMargin);
+      double yMin = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
+      double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
 
-    for (int m = 0; m < M; m++) {
-      // Augmented MCL: Deciding whether to add random particle
-      if (((double)rand() / RAND_MAX) < p_inject) {
-        Particle newP;
-        newP.x = xMin + ((double)rand() / RAND_MAX) * (xMax - xMin);
-        newP.y = yMin + ((double)rand() / RAND_MAX) * (yMax - yMin);
-        newP.theta = toPInPI(-M_PI + ((double)rand() / RAND_MAX) * 2 * M_PI);
-        newP.weight = 1.0 / M;
-        newParticles.push_back(newP);
-      } else {
-        // Standard Low Variance Sampling
-        double u = r + (double)m / M;
-        while (u > c && i < M - 1) {
-          i++;
-          c += pfParticles[i].weight;
+      for (int m = 0; m < M; m++) {
+        // Augmented MCL: Deciding whether to add random particle
+        if (((double)rand() / RAND_MAX) < p_inject) {
+          Particle newP;
+          newP.x = xMin + ((double)rand() / RAND_MAX) * (xMax - xMin);
+          newP.y = yMin + ((double)rand() / RAND_MAX) * (yMax - yMin);
+          newP.theta = toPInPI(-M_PI + ((double)rand() / RAND_MAX) * 2 * M_PI);
+          newP.weight = 1.0 / M;
+          newParticles.push_back(newP);
+        } else {
+          // Standard Low Variance Sampling
+          double u = r + (double)m / M;
+          while (u > c && i < M - 1) {
+            i++;
+            c += pfParticles[i].weight;
+          }
+          Particle newP = pfParticles[i];
+          newP.weight = 1.0 / M;
+          newParticles.push_back(newP);
         }
-        Particle newP = pfParticles[i];
-        newP.weight = 1.0 / M;
-        newParticles.push_back(newP);
       }
+      pfParticles = newParticles;
     }
-    pfParticles = newParticles;
   }
 }
 

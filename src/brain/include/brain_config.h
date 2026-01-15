@@ -97,6 +97,10 @@ public:
   double pfAlphaFast = 0.5;
   double pfInjectionRatio = 0.2;
 
+  double pfZeroMotionTransThresh = 0.001;
+  double pfZeroMotionRotThresh = 0.002;
+  bool pfResampleWhenStopped = false;
+
   bool soundEnable = false;
   string soundPack = "espeak";
 
