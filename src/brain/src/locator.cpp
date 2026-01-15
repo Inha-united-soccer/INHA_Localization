@@ -159,13 +159,10 @@ void Locator::predictPF(Pose2D currentOdomPose) {
   double rotDist = fabs(dtheta);
 
   if (transDist < pfZeroMotionTransThresh && rotDist < pfZeroMotionRotThresh) {
-    dx = 0;
-    dy = 0;
-    dtheta = 0;
     isRobotMoving = false;
-  } else {
-    isRobotMoving = true;
+    return;
   }
+  isRobotMoving = true;
 
   double c = cos(lastPFOdomPose.theta);
   double s = sin(lastPFOdomPose.theta);
