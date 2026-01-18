@@ -63,18 +63,18 @@ brain_node:
       pf_zeromotion_rot_thresh: 0.05 # 라디안
 
 
-      pf_sensor_noise: 1.0 
+      pf_sensor_noise: 0.3
 
-      pf_alpha_1: 0.1 #rot -> rot
+      pf_alpha_1: 0.001 #rot -> rot
       pf_alpha_2: 0.001 #trans -> rot
       pf_alpha_3: 0.001 # trans-> trans
-      pf_alpha_4: 0.01 #rot->trans
+      pf_alpha_4: 0.001 #rot->trans
 
 
       min_marker_count: 5
       max_residual: 0.35 
       init_own_half_only: true
-      pf_injection_ratio: 0.01
+      pf_injection_ratio: 0.08
       pf_alpha_slow: 0.05
       pf_alpha_fast: 0.5
       pf_resample_when_stopped: false
