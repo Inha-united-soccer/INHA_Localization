@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <limits>
+#include <random>
 #include <rerun.hpp>
 
 #include "types.h"
