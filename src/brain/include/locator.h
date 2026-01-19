@@ -123,8 +123,6 @@ public:
   double alpha_fast = 0.5;
   double pfInjectionRatio = 0.2;
 
-  int pfNumParticles = 150;
-  double pfInitFieldMargin = 1.0;
   bool pfInitOwnHalfOnly = true;
 
   double pfAlpha1 = 0.08;  // rot -> rot
