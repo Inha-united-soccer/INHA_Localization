@@ -145,6 +145,8 @@ public:
   // Pose Smoothing
   Pose2D smoothedPose = {0, 0, 0};
   bool hasSmoothedPose = false;
+
+  vector<double> flatCostMatrix;
 };
 
 class Brain;

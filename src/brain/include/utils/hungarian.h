@@ -61,6 +61,53 @@ public:
       }
     }
 
+    return SolveInternal(n, nRows, nCols, Assignment);
+  }
+
+  double Solve(const vector<double> &DistMatrix, int nRows, int nCols, vector<int> &Assignment) {
+    if (nRows == 0 || nCols == 0) return 0.0;
+
+    Assignment.assign(nRows, -1);
+    int n = max(nRows, nCols);
+
+    // Ensure buffers are large enough
+    int sizeNeeded = n + 1;
+    if (u.size() < sizeNeeded) {
+      u.resize(sizeNeeded);
+      v.resize(sizeNeeded);
+      p.resize(sizeNeeded);
+      way.resize(sizeNeeded);
+      minv.resize(sizeNeeded);
+      used.resize(sizeNeeded);
+      // Resize cost matrix rows
+      costMatrix.resize(n);
+      for (auto &row : costMatrix)
+        row.resize(n);
+    }
+    // Even if size is enough, make sure costMatrix cols are enough (if n grew)
+    if (costMatrix.size() < n) { costMatrix.resize(n); }
+    for (int i = 0; i < n; ++i) {
+      if (costMatrix[i].size() < n) costMatrix[i].resize(n);
+    }
+
+    // Fill cost matrix
+    for (int i = 0; i < n; i++) {
+      for (int j = 0; j < n; j++) {
+        if (i < nRows && j < nCols) {
+          costMatrix[i][j] = DistMatrix[i * nCols + j];
+        } else {
+          costMatrix[i][j] = 0.0;
+        }
+      }
+    }
+
+    return SolveInternal(n, nRows, nCols, Assignment);
+  }
+
+private:
+  double SolveInternal(int n, int nRows, int nCols, vector<int> &Assignment) {
+    double cost = 0.0;
+
     // Reset helper arrays (fill not strictly needed if we init correctly in loop, but safer)
     fill(u.begin(), u.end(), 0.0);
     fill(v.begin(), v.end(), 0.0);
@@ -74,8 +121,8 @@ public:
       int j0 = 0;
       // Reset minv and used for this iteration step
       // We only strictly need to reset up to n
-      fill(minv.begin(), minv.begin() + sizeNeeded, std::numeric_limits<double>::infinity());
-      fill(used.begin(), used.begin() + sizeNeeded, false);
+      fill(minv.begin(), minv.begin() + n + 1, std::numeric_limits<double>::infinity());
+      fill(used.begin(), used.begin() + n + 1, false);
 
       do {
         used[j0] = true;
@@ -120,7 +167,7 @@ public:
         int col = j - 1;
         if (row < nRows && col < nCols) {
           Assignment[row] = col;
-          cost += DistMatrix[row][col];
+          cost += costMatrix[row][col];
         }
       }
     }
