@@ -82,7 +82,7 @@ brain_node:
       pf_alpha_slow: 0.05
       pf_alpha_fast: 0.5
       pf_resample_when_stopped: true
-      num_particles: 200
+      num_particles: 150
       init_field_margin: 0.5
       
 
