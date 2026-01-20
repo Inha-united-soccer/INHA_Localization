@@ -265,7 +265,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 
         vector<FieldMarker> validObsInField;
         validObsInField.reserve(nObs);
-        double gateDistSq = 2.5 * 2.5;
+        double gateDistSq = 4.0 * 4.0;
 
         auto getMahalanobisCost = [&](double dx_f, double dy_f, double theta) {
           double c = cos(theta);
