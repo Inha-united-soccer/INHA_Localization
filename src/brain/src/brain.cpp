@@ -1507,7 +1507,7 @@ void Brain::odometerCallback(const booster_interface::msg::Odometer &msg) {
     color = 0x006600FF;
   else if (!data->tmImLead)
     color = 0x00CC00FF;
-  log->logRobot("field/robot", data->robotPoseToField, color, true);
+  log->logRobot("field/robot", data->robotPoseToField, color, "", true);
 }
 
 void Brain::lowStateCallback(const booster_interface::msg::LowState &msg) {
