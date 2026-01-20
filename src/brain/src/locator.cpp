@@ -12,11 +12,21 @@
 #define REGISTER_LOCATOR_BUILDER(Name)                                                                                                                         \
   factory.registerBuilder<Name>(#Name, [brain](const string &name, const NodeConfig &config) { return make_unique<Name>(name, config, brain); });
 
-double gaussianRandom(double mean, double stddev) {
+// Helper for random number generation
+std::mt19937 &getRandomEngine() {
   static std::random_device rd;
   static std::mt19937 gen(rd());
+  return gen;
+}
+
+double gaussianRandom(double mean, double stddev) {
   std::normal_distribution<double> d(mean, stddev);
-  return d(gen);
+  return d(getRandomEngine());
+}
+
+double uniformRandom(double min, double max) {
+  std::uniform_real_distribution<double> d(min, max);
+  return d(getRandomEngine());
 }
 void RegisterLocatorNodes(BT::BehaviorTreeFactory &factory, Brain *brain) {
   REGISTER_LOCATOR_BUILDER(SelfLocate);
@@ -81,7 +91,7 @@ void Locator::calcFieldMarkers(FieldDimensions fd) {
 void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
                           double injectionRatio, double zeroMotionTransThresh, double zeroMotionRotThresh, bool resampleWhenStopped, double clusterDistThr,
                           double clusterThetaThr, double smoothAlpha, double kldErr, double kldZ, int minParticles, int maxParticles, double resX, double resY,
-                          double resTheta) {
+                          double resTheta, double obsVarX, double obsVarY) {
   this->pfNumParticles = numParticles;
   this->pfInitFieldMargin = initMargin;
   this->pfInitOwnHalfOnly = ownHalf;
@@ -107,6 +117,8 @@ void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, dou
   this->pfResolutionX = resX;
   this->pfResolutionY = resY;
   this->pfResolutionTheta = resTheta;
+  this->pfObsVarX = obsVarX;
+  this->pfObsVarY = obsVarY;
 }
 
 void Locator::init(FieldDimensions fd, int minMarkerCntParam, double residualToleranceParam, double muOffestParam, bool enableLogParam, string logIPParam) {
@@ -137,10 +149,10 @@ void Locator::globalInitPF(Pose2D currentOdom) {
   int num = pfNumParticles;
   pfParticles.resize(num);
 
-  std::srand(std::time(0));
+  // std::srand(std::time(0)); // No longer needed
   for (int i = 0; i < num; i++) {
-    pfParticles[i].x = xMin + ((double)rand() / RAND_MAX) * (xMax - xMin);
-    pfParticles[i].y = yMin + ((double)rand() / RAND_MAX) * (yMax - yMin);
+    pfParticles[i].x = uniformRandom(xMin, xMax);
+    pfParticles[i].y = uniformRandom(yMin, yMax);
     double thetaSpread = deg2rad(30.0);
     double thetaCenter;
 
@@ -149,7 +161,7 @@ void Locator::globalInitPF(Pose2D currentOdom) {
     else
       thetaCenter = M_PI / 2.0;
 
-    pfParticles[i].theta = toPInPI(thetaCenter + ((double)rand() / RAND_MAX * 2.0 * thetaSpread) - thetaSpread);
+    pfParticles[i].theta = toPInPI(thetaCenter + uniformRandom(-thetaSpread, thetaSpread));
     pfParticles[i].weight = 1.0 / num;
   }
 
@@ -221,7 +233,6 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
     obsByType[m.type].push_back(m);
   }
 
-  // Pre-categorize field markers by type
   // Optimization: This could be done once at init if fieldMarkers doesn't change,
   // but it's small enough to do here for safety.
 
@@ -229,7 +240,6 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 
   // Weight Update
   for (auto &p : pfParticles) {
-    // Check Boundary Constraints
     double xMinConstraint = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
     double xMaxConstraint = fieldDimensions.length / 2.0 + pfInitFieldMargin;
     double yMinConstraint = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
@@ -243,8 +253,8 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 
       // Process each marker type independently
       for (auto const &[type, obsList] : obsByType) {
-        // If map has no markers of this type, these obs are ghosts -> penalty?
-        // Current logic: ignore (or implicit penalty by not increasing probability)
+
+        // penalty 걸러주기
         if (mapByType.find(type) == mapByType.end()) continue;
 
         const auto &mapList = mapByType[type];
@@ -253,11 +263,23 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
         int nObs = obsList.size();
         int nMap = mapList.size();
 
-        // Transform all map markers to robot frame? Or obs to field frame?
-        // Old logic: markerToFieldFrame (obs -> field). Let's stick to that.
         vector<FieldMarker> validObsInField;
         validObsInField.reserve(nObs);
-        double gateDistSq = 3.0 * 3.0; // 3m gating
+        double gateDistSq = 1.8 * 1.8; // 1.8m gating
+
+        // Helper to compute Mahalanobis-like cost:
+        // Returns "squared distance" in standard deviations (Chi-square statistic)
+        // dx_f, dy_f: difference in field frame
+        // theta: robot orientation
+        auto getMahalanobisCost = [&](double dx_f, double dy_f, double theta) {
+          // Rotate difference into robot frame
+          double c = cos(theta);
+          double s = sin(theta);
+          double dx_r = c * dx_f + s * dy_f;
+          double dy_r = -s * dx_f + c * dy_f;
+
+          return (dx_r * dx_r) / pfObsVarX + (dy_r * dy_r) / pfObsVarY;
+        };
 
         for (auto &m_r : obsList) {
           FieldMarker m_f = markerToFieldFrame(m_r, pose);
@@ -284,21 +306,14 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
           for (int j = 0; j < nMap; ++j) {
             double dx = validObsInField[i].x - mapList[j].x;
             double dy = validObsInField[i].y - mapList[j].y;
-            // Cost = Squared Distance
-            costMatrix[i][j] = dx * dx + dy * dy;
+            costMatrix[i][j] = getMahalanobisCost(dx, dy, pose.theta);
           }
         }
 
-        // Solve Assignment
         vector<int> assignment;
         double minTotalDistSq = hungarian.Solve(costMatrix, assignment);
 
-        // Update Likelihood
-        // cost is sum of dist^2 for optimal matches
-        // For unassigned observations (if nObs > nMap), they are NOT included in cost.
-        // We might want to add a penalty for unassigned observations?
-        // For now, sticking to "sum of matches" to be safe.
-        logLikelihood += -minTotalDistSq / (2 * sigma * sigma);
+        logLikelihood += -0.5 * minTotalDistSq;
       }
 
       double likelihood = exp(logLikelihood);
@@ -309,6 +324,16 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 
   if (pfParticles.size() > 0) avgWeight = totalWeight / pfParticles.size();
 
+  // Augmented MCL: Update short-term and long-term averages
+  if (w_slow == 0.0)
+    w_slow = avgWeight;
+  else
+    w_slow += alpha_slow * (avgWeight - w_slow);
+  if (w_fast == 0.0)
+    w_fast = avgWeight;
+  else
+    w_fast += alpha_fast * (avgWeight - w_fast);
+
   // Normalize
   if (totalWeight < 1e-10) {
     for (auto &p : pfParticles)
@@ -318,16 +343,17 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       p.weight /= totalWeight;
   }
 
-  double p_inject = 0.1;
+  // Calculate dynamic injection probability
+  double p_inject = std::max(0.0, 1.0 - w_fast / w_slow);
 
   double sqSum = 0;
   for (auto &p : pfParticles)
     sqSum += p.weight * p.weight;
   double ess = 1.0 / (sqSum + 1e-9);
 
-  if (ess < pfParticles.size() * 0.5) { // increased threshold slightly
+  if (ess < pfParticles.size() * 0.5) {
     vector<Particle> newParticles;
-    newParticles.reserve(maxParticles); // Reserve max to avoid realloc
+    newParticles.reserve(maxParticles);
 
     // KLD Sampling Variables
     // We need to track occupied bins
@@ -351,7 +377,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
     int M = 0;                // Current count
 
     // Low Variance Sampling Setup
-    double r = ((double)rand() / RAND_MAX) * (1.0 / pfParticles.size()); // Assuming simplified LV
+    double r = uniformRandom(0.0, 1.0 / pfParticles.size()); // Assuming simplified LV
     // Standard LV requires fixed size. For KLD we often use simple random sampling with probability prop to weight
     // OR we can run LV over the old set and keep adding until we hit M_chi.
     // Let's implement standard "pick proportional to weight" for KLD loop to be strictly correct with dynamic N.
@@ -372,10 +398,10 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 
     do {
       // Select particle
-      double u = (double)rand() / RAND_MAX;
+      double u = uniformRandom(0.0, 1.0);
       Particle newP;
 
-      double p_inject = this->pfInjectionRatio;
+      // double p_inject = this->pfInjectionRatio; // Now using dynamic p_inject calculated above
       if (u < p_inject) {
         // Injection: Random Global Particle
         double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
@@ -383,31 +409,28 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
         double yMin = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
         double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
 
-        newP.x = xMin + ((double)rand() / RAND_MAX) * (xMax - xMin);
-        newP.y = yMin + ((double)rand() / RAND_MAX) * (yMax - yMin);
-        newP.theta = toPInPI(((double)rand() / RAND_MAX) * 2.0 * M_PI - M_PI);
+        newP.x = uniformRandom(xMin, xMax);
+        newP.y = uniformRandom(yMin, yMax);
+        newP.theta = toPInPI(uniformRandom(-M_PI, M_PI));
         newP.weight = 1.0; // Weight doesn't matter here, will be normalized later
       } else {
         // Standard Resampling
         // Re-roll u since we used it for injection check?
         // Or just normalize u range?
         // Simpler: Just roll again for CDF selection
-        double u2 = (double)rand() / RAND_MAX;
+        // Simpler: Just roll again for CDF selection
+        double u2 = uniformRandom(0.0, 1.0);
         auto it = lower_bound(cdf.begin(), cdf.end(), u2);
         int idx = distance(cdf.begin(), it);
         if (idx >= (int)pfParticles.size()) idx = pfParticles.size() - 1;
         newP = pfParticles[idx];
       }
 
-      // Apply motion noise? No, this is resampling step. Motion noise is predict step.
-      // Applying minimal jitter? optional. Sticking to copy.
-
       // Check bin
       long long key = getBinKey(newP);
       if (occupiedBins.find(key) == occupiedBins.end()) {
         occupiedBins.insert(key);
         k++;
-        // Recalculate M_chi
         if (k > 1) {
           // Wilson-Hilferty approximation
           double z = kldZ;
@@ -450,7 +473,26 @@ Pose2D Locator::getEstimatePF() {
   std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
   std::sort(sortedIndices.begin(), sortedIndices.end(), [&](int a, int b) { return pfParticles[a].weight > pfParticles[b].weight; });
 
-  return {pfParticles[sortedIndices[0]].x, pfParticles[sortedIndices[0]].y, pfParticles[sortedIndices[0]].theta};
+  // Take weighted average of top 10 particles
+  double sumW = 0.0;
+  double x = 0.0, y = 0.0, sumSin = 0.0, sumCos = 0.0;
+
+  int count = std::min((int)sortedIndices.size(), 10);
+  for (int i = 0; i < count; ++i) {
+    const auto &p = pfParticles[sortedIndices[i]];
+    x += p.x * p.weight;
+    y += p.y * p.weight;
+    sumSin += sin(p.theta) * p.weight;
+    sumCos += cos(p.theta) * p.weight;
+    sumW += p.weight;
+  }
+
+  if (sumW > 1e-9) {
+    return {x / sumW, y / sumW, atan2(sumSin, sumCos)};
+  } else {
+    // Fallback if weights are zero (shouldn't happen with proper normalization)
+    return {pfParticles[sortedIndices[0]].x, pfParticles[sortedIndices[0]].y, pfParticles[sortedIndices[0]].theta};
+  }
 
   // // clustering
   // for (int idx : sortedIndices) {

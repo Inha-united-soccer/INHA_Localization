@@ -136,7 +136,11 @@ public:
   void setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
                    double injectionRatio, double zeroMotionTransThresh = 0.001, double zeroMotionRotThresh = 0.002, bool resampleWhenStopped = false,
                    double clusterDistThr = 0.3, double clusterThetaThr = 0.35, double smoothAlpha = 0.4, double kldErr = 0.05, double kldZ = 2.33,
-                   int minParticles = 50, int maxParticles = 500, double resX = 0.2, double resY = 0.2, double resTheta = 0.17);
+                   int minParticles = 50, int maxParticles = 500, double resX = 0.2, double resY = 0.2, double resTheta = 0.17, double obsVarX = 0.04,
+                   double obsVarY = 0.04);
+
+  double pfObsVarX = 0.04;
+  double pfObsVarY = 0.04;
 
   // Pose Smoothing
   Pose2D smoothedPose = {0, 0, 0};

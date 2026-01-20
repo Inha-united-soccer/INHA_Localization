@@ -134,6 +134,8 @@ Brain::Brain() : rclcpp::Node("brain_node") {
   declare_parameter<double>("locator.pf_alpha_4", 0.01);
   declare_parameter<double>("locator.pf_alpha_slow", 0.05);
   declare_parameter<double>("locator.pf_alpha_fast", 0.5);
+  declare_parameter<double>("locator.pf_obs_var_x", 0.04);
+  declare_parameter<double>("locator.pf_obs_var_y", 0.04);
   declare_parameter<double>("locator.pf_zeromotion_trans_thresh", 0.001);
   declare_parameter<double>("locator.pf_zeromotion_rot_thresh", 0.002);
   declare_parameter<bool>("locator.pf_resample_when_stopped", false);
@@ -169,7 +171,8 @@ void Brain::init() {
   locator->setPFParams(config->pfNumParticles, config->pfInitFieldMargin, config->pfInitOwnHalfOnly, config->pfSensorNoise,
                        {config->pfAlpha1, config->pfAlpha2, config->pfAlpha3, config->pfAlpha4}, config->pfAlphaSlow, config->pfAlphaFast,
                        config->pfInjectionRatio, config->pfZeroMotionTransThresh, config->pfZeroMotionRotThresh, config->pfResampleWhenStopped,
-                       config->pfClusterDistThr, config->pfClusterThetaThr, config->pfSmoothAlpha);
+                       config->pfClusterDistThr, config->pfClusterThetaThr, config->pfSmoothAlpha, config->kldErr, config->kldZ, config->minParticles,
+                       config->maxParticles, config->pfResolutionX, config->pfResolutionY, config->pfResolutionTheta, config->pfObsVarX, config->pfObsVarY);
 
   locator->setLog(&log->log_tcp);
 
@@ -290,6 +293,8 @@ void Brain::loadConfig() {
   get_parameter("locator.pf_alpha_slow", config->pfAlphaSlow);
   get_parameter("locator.pf_alpha_fast", config->pfAlphaFast);
   get_parameter("locator.pf_injection_ratio", config->pfInjectionRatio);
+  get_parameter("locator.pf_obs_var_x", config->pfObsVarX);
+  get_parameter("locator.pf_obs_var_y", config->pfObsVarY);
 
   get_parameter("locator.pf_zeromotion_trans_thresh", config->pfZeroMotionTransThresh);
   get_parameter("locator.pf_zeromotion_rot_thresh", config->pfZeroMotionRotThresh);
@@ -1502,8 +1507,7 @@ void Brain::odometerCallback(const booster_interface::msg::Odometer &msg) {
     color = 0x006600FF;
   else if (!data->tmImLead)
     color = 0x00CC00FF;
-  string label = format("Cost: %.1f", data->tmMyCost);
-  log->logRobot("field/robot", data->robotPoseToField, color, label, true);
+  log->logRobot("field/robot", data->robotPoseToField, color, true);
 }
 
 void Brain::lowStateCallback(const booster_interface::msg::LowState &msg) {

@@ -76,7 +76,7 @@ public:
   double goalPostMargin = 0.4;
   double goalPostMarginForTouch = 0.1;
   double ballConfidenceThreshold;
-  bool treatPersonAsRobot = false;   
+  bool treatPersonAsRobot = false;
   double ballOutThreshold = 2.0;
   double tmBallDistThreshold = 4.0;
   bool limitNearBallSpeed = true;
@@ -97,6 +97,8 @@ public:
   double pfAlphaSlow = 0.05;
   double pfAlphaFast = 0.5;
   double pfInjectionRatio = 0.2;
+  double pfObsVarX = 0.04; // 0.2m std dev
+  double pfObsVarY = 0.04; // 0.2m std dev
 
   double pfZeroMotionTransThresh = 0.001;
   double pfZeroMotionRotThresh = 0.002;
