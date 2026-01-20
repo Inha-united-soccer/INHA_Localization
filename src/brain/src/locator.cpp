@@ -265,7 +265,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 
         vector<FieldMarker> validObsInField;
         validObsInField.reserve(nObs);
-        double gateDistSq = 2.0 * 2.0; // 2.0m gating
+        double gateDistSq = 2.5 * 2.5;
 
         auto getMahalanobisCost = [&](double dx_f, double dy_f, double theta) {
           double c = cos(theta);
@@ -346,7 +346,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
     sqSum += p.weight * p.weight;
   double ess = 1.0 / (sqSum + 1e-9);
 
-  if (ess < pfParticles.size() * 0.5) {
+  if (ess < pfParticles.size() * 0.3) {
     // if (true) {
     vector<Particle> newParticles;
     newParticles.reserve(maxParticles);
