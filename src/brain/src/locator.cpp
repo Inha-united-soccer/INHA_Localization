@@ -445,233 +445,36 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
 Pose2D Locator::getEstimatePF() {
   if (pfParticles.empty()) return {0, 0, 0};
 
-  // 1. Normalized Dynamic K
-  // K proportional to ESS ratio.
-  // High ESS (converged) -> small K (e.g. 50). Low ESS (dispersed) -> large K (e.g. 150).
-  double ess = 0;
-  double sqSum = 0;
-  for (const auto &p : pfParticles)
-    sqSum += p.weight * p.weight;
-  ess = 1.0 / (sqSum + 1e-9);
-
+  // 1. Filter Outliers: Top-K% Selection
+  // We only consider the top 10% of particles by weight to ignore the long tail of noise.
+  double keep_ratio = 0.07;
   size_t N = pfParticles.size();
-  size_t K = std::clamp((int)((ess / N) * 200), 50, 150);
-  K = std::min(K, N);
+  size_t K = std::max<size_t>(1, N * keep_ratio);
 
-  // Partial Sort to get Top-K heavy particles
+  // nth_element puts the top K elements in [0, K)
+  // Note: We want LARGER weights, so we use a.weight > b.weight as the comparator.
   std::nth_element(pfParticles.begin(), pfParticles.begin() + K, pfParticles.end(), [](const Particle &a, const Particle &b) { return a.weight > b.weight; });
-  // Optional: Sort the top K for deterministic greedy order
-  std::sort(pfParticles.begin(), pfParticles.begin() + K, [](const Particle &a, const Particle &b) { return a.weight > b.weight; });
 
-  // 2. Clustering with 2-Stage Gating
-  struct Cluster {
-    double totalWeight = 0;
-    double xSum = 0;
-    double ySum = 0;
-    double cosSum = 0;
-    double sinSum = 0;
-    Pose2D leader;        // Fixed Anchor
-    Pose2D centroid;      // Moving Average
-    double maxDist = 0.0; // Debug metric (meters)
-    int count = 0;
+  // 2. Select Best Particle
+  // Find the particle with the maximum weight among the top K.
+  auto bestIt = std::max_element(pfParticles.begin(), pfParticles.begin() + K, [](const Particle &a, const Particle &b) { return a.weight < b.weight; });
 
-    void add(const Particle &p) {
-      totalWeight += p.weight;
-      xSum += p.x * p.weight;
-      ySum += p.y * p.weight;
-      cosSum += cos(p.theta) * p.weight;
-      sinSum += sin(p.theta) * p.weight;
-      count++;
-      centroid = {xSum / totalWeight, ySum / totalWeight, atan2(sinSum, cosSum)};
-    }
-  };
-  std::vector<Cluster> clusters;
-  clusters.reserve(10); // reserve some slots
+  Pose2D raw = {bestIt->x, bestIt->y, bestIt->theta};
 
-  // Calculate mass of top K to use relative early exit
-  double topKMass = 0;
-  for (size_t i = 0; i < K; ++i)
-    topKMass += pfParticles[i].weight;
-
-  double cumW = 0;
-  int processed = 0;
-  int K_min = 20; // Minimum particles to process before exit
-
-  // Params for Gating (tuned for normalized dist)
-  // distSq = (dx^2)*invVarX + (dy^2)*invVarY
-  // 1.0 ~ 1 sigma.
-  double GuardThr = 16.0; // ~4 sigma squared (Anchor)
-  double TightThr = 4.0;  // ~2 sigma squared (Refine)
-  double LooseThr = 9.0;  // ~3 sigma squared (Boundary)
-
-  auto getMahalanobis = [&](const Particle &p, const Pose2D &target, double alignTheta) {
-    // Rotate p into target's frame (alignTheta)
-    double dx_g = p.x - target.x;
-    double dy_g = p.y - target.y;
-    double c = cos(alignTheta);
-    double s = sin(alignTheta);
-    double dx_l = c * dx_g + s * dy_g;
-    double dy_l = -s * dx_g + c * dy_g;
-
-    // Anisotropic metric
-    return (dx_l * dx_l) * invPfObsVarX + (dy_l * dy_l) * invPfObsVarY;
-  };
-
-  auto getEuclid = [&](const Particle &p, const Pose2D &target) { return std::hypot(p.x - target.x, p.y - target.y); };
-
-  for (size_t i = 0; i < K; ++i) {
-    const auto &p = pfParticles[i];
-    cumW += p.weight;
-    processed++;
-
-    // Early Exit: if we covered 90% of the significant mass and processed enough
-    if (cumW > topKMass * 0.9 && processed > K_min) break;
-
-    bool matched = false;
-    for (auto &c : clusters) {
-      // Use Leader theta for small clusters to avoid unstable centroid theta
-      // Use Centroid theta only when enough samples (e.g., > 5)
-      double alignTheta = c.leader.theta;
-      Pose2D refPose = (c.count < 5) ? c.leader : c.centroid;
-
-      double dSqLeader = getMahalanobis(p, c.leader, alignTheta);
-      double dSqCentroid = getMahalanobis(p, refPose, alignTheta);
-
-      // Explicit Boundary Logic
-      // 1. Must be within Guard of Leader (Anchor)
-      // 2. Must be within Tight of Centroid OR (Near Boundary AND within Loose)
-      if (dSqLeader < GuardThr) {
-        bool isNearBoundary = (dSqLeader > GuardThr * 0.6); // Tune ratio
-        if (dSqCentroid < TightThr) {
-          matched = true;
-        } else if (isNearBoundary && dSqCentroid < LooseThr) {
-          matched = true;
-        }
-      }
-
-      // Also check angular difference (simple check)
-      if (matched) {
-        double dTheta = std::fabs(toPInPI(p.theta - refPose.theta));
-        if (dTheta > 1.0) matched = false; // ~57 deg guard
-      }
-
-      if (matched) {
-        c.add(p);
-        c.maxDist = std::max(c.maxDist, getEuclid(p, c.leader));
-        break;
-      }
-    }
-
-    if (!matched) {
-      Cluster c;
-      c.leader = {p.x, p.y, p.theta};
-      c.add(p); // Init centroid
-      clusters.push_back(c);
-    }
-  }
-
-  // 3. Selection w/ Persistent Hysteresis
-  double u = 1.0 - (ess / N);
-  double lambda = 0.5 * (1.0 + 5.0 * u); // base 0.5, max ~3.0
-
-  Cluster *best = nullptr;
-  Cluster *second = nullptr;
-  double bestScore = -1e9;
-
-  // Consider Top-2 current clusters
-  // And virtually consider persistent clusters (if they are distinct from current?)
-  // Simplified: Just punish current clusters by distance to persistent best
-
-  // If we have no persistent info (first run), just pick max weight
+  // 3. EMA Smoothing
   if (!hasSmoothedPose) {
-    auto it = std::max_element(clusters.begin(), clusters.end(), [](const Cluster &a, const Cluster &b) { return a.totalWeight < b.totalWeight; });
-    if (it != clusters.end()) best = &(*it);
-  } else {
-    for (auto &c : clusters) {
-      // Distance to PREVIOUS ESTIMATE (Hysteresis)
-      // We can also check prevBestCentroid and prevSecondCentroid
-      // For now, simple hysteresis against smoothedPose is safest
-      double d = std::hypot(c.centroid.x - smoothedPose.x, c.centroid.y - smoothedPose.y);
-      double score = c.totalWeight - lambda * d;
-
-      if (score > bestScore) {
-        bestScore = score;
-        best = &c;
-      }
-    }
-    // Find second best for persistence update
-    double secondScore = -1e9;
-    for (auto &c : clusters) {
-      if (&c == best) continue;
-      double d = std::hypot(c.centroid.x - smoothedPose.x, c.centroid.y - smoothedPose.y);
-      double score = c.totalWeight - lambda * d;
-      if (score > secondScore) {
-        secondScore = score;
-        second = &c;
-      }
-    }
-  }
-
-  if (!best) return {0, 0, 0}; // Should not happen
-
-  // 4. Stability Check & Freeze
-  double lc_dist = std::hypot(best->leader.x - best->centroid.x, best->leader.y - best->centroid.y);
-  if (lc_dist > 0.4) { // Relaxed to 40cm
-    freezeCounter = 2; // Reduced to 2 frames
-    // prtWarn(format("[PF] Instability Detected: L-C Dist=%.3f > 0.4 -> Freeze", lc_dist));
-  }
-
-  Pose2D result = best->centroid;
-
-  // 5. Output Logic
-  if (freezeCounter > 0) {
-    freezeCounter--;
-    if (freezeCounter % 2 == 0) { // Log occasionally
-      prtWarn(format("[PF] FROZEN: Counter=%d | Return PrevSmoothed (%.2f, %.2f, %.0f)", freezeCounter, smoothedPose.x, smoothedPose.y,
-                     rad2deg(smoothedPose.theta)));
-    }
-    // Freeze Mode: Return previous estimate. Do NOT update EMA. Do NOT update Persistence.
-    if (hasSmoothedPose)
-      return smoothedPose;
-    else
-      return result; // Fallback if no history
-  }
-
-  // 6. Update State (Stable)
-  prevBestCentroid = best->centroid;
-  if (second)
-    prevSecondCentroid = second->centroid;
-  else
-    prevSecondCentroid = best->centroid; // duplicate if only 1 cluster
-
-  // Jump-Aware EMA
-  if (!hasSmoothedPose) {
-    smoothedPose = result;
+    smoothedPose = raw;
     hasSmoothedPose = true;
   } else {
-    double dx = result.x - smoothedPose.x;
-    double dy = result.y - smoothedPose.y;
-    double dTheta = std::fabs(toPInPI(result.theta - smoothedPose.theta));
-
-    // Jump metric: 0.2m ~ 30deg(0.52rad)
-    double jump = std::hypot(dx, dy) + (0.2 / 0.52) * dTheta;
-
+    // fast alpha for responsiveness (configured in yaml)
     double alpha = pfSmoothAlpha;
-    if (jump > 1.0) { // Relaxed to 1.0 metric
-      alpha = 0.2;    // Less aggressive penalty (was 0.1)
-      prtWarn(format("[PF] JUMP DETECTED: dist=%.3f > 1.0 -> alpha=0.2", jump));
-    }
 
-    smoothedPose.x = alpha * result.x + (1.0 - alpha) * smoothedPose.x;
-    smoothedPose.y = alpha * result.y + (1.0 - alpha) * smoothedPose.y;
-    double diffTheta = toPInPI(result.theta - smoothedPose.theta);
-    smoothedPose.theta = toPInPI(smoothedPose.theta + alpha * diffTheta);
-  }
+    smoothedPose.x = alpha * raw.x + (1.0 - alpha) * smoothedPose.x;
+    smoothedPose.y = alpha * raw.y + (1.0 - alpha) * smoothedPose.y;
 
-  // Debug Log (Periodic)
-  static int logCnt = 0;
-  if (logCnt++ % 60 == 0) { // ~2 sec interval
-    prtWarn(format("[PF] Est: K=%zu | Clusters=%zu | ESS=%.1f | BestW=%.3f | L-C=%.3f", K, clusters.size(), ess, best->totalWeight, lc_dist));
+    // Angular EMA with wrap-around safety
+    double dTheta = toPInPI(raw.theta - smoothedPose.theta);
+    smoothedPose.theta = toPInPI(smoothedPose.theta + alpha * dTheta);
   }
 
   return smoothedPose;
