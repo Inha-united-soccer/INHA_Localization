@@ -333,7 +333,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       }
       double logLikelihood = -0.5 * sumCost;
 
-      double likelihood = exp(logLikelihood);
+      double likelihood = 0.3 * exp(logLikelihood);
       p.weight *= likelihood;
     }
     totalWeight += p.weight;
