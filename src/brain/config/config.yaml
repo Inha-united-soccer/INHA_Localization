@@ -1,4 +1,4 @@
-무brain_node:
+brain_node:
   ros__parameters:
     game:
       team_id: 13 # must be consistant with GameControl

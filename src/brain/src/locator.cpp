@@ -151,7 +151,7 @@ uint64_t Locator::getBinKey(const Particle &p) {
 
   uint64_t xIdx = (uint64_t)((p.x + offX) / pfResolutionX);
   uint64_t yIdx = (uint64_t)((p.y + offY) / pfResolutionY);
-  uint64_t thIdx = (uint64_t)(toPIn2PI(p.theta) / pfResolutionTheta); // 0~2PI
+  uint64_t thIdx = (uint64_t)(toPInPI(p.theta) / pfResolutionTheta); // 0~2PI
 
   return (xIdx << 42) | (yIdx << 21) | thIdx;
 }
