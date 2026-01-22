@@ -99,6 +99,7 @@ public:
   double pfInjectionRatio = 0.2;
   double pfInvObsVarX = 1.4;
   double pfInvObsVarY = 4.0;
+  double pfLikelihoodWeight = 0.3;
   double pfUnmatchedPenaltyConfThr = 0.6;
 
   double pfZeroMotionTransThresh = 0.001;

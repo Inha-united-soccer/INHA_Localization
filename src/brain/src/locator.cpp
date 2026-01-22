@@ -91,8 +91,8 @@ void Locator::calcFieldMarkers(FieldDimensions fd) {
 
 void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
                           double injectionRatio, double zeroMotionTransThresh, double zeroMotionRotThresh, bool resampleWhenStopped, double clusterDistThr,
-                          double clusterThetaThr, double smoothAlpha, double kldErr, double kldZ, int minParticles, int maxParticles, double resX, double resY,
-                          double resTheta, double invObsVarX, double invObsVarY, double unmatchedPenaltyConfThr, double pfEssThreshold) {
+                          double clusterThetaThr, double smoothAlpha, double invObsVarX, double invObsVarY, double unmatchedPenaltyConfThr,
+                          double pfEssThreshold) {
   this->pfNumParticles = numParticles;
   this->pfInitFieldMargin = initMargin;
   this->pfInitOwnHalfOnly = ownHalf;
@@ -111,13 +111,6 @@ void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, dou
   this->pfClusterThetaThr = clusterThetaThr;
   this->pfSmoothAlpha = smoothAlpha;
 
-  this->kldErr = kldErr;
-  this->kldZ = kldZ;
-  this->minParticles = minParticles;
-  this->maxParticles = maxParticles;
-  this->pfResolutionX = resX;
-  this->pfResolutionY = resY;
-  this->pfResolutionTheta = resTheta;
   this->invPfObsVarX = invObsVarX;
   this->invPfObsVarY = invObsVarY;
   this->pfUnmatchedPenaltyConfThr = unmatchedPenaltyConfThr;
@@ -136,40 +129,6 @@ void Locator::init(FieldDimensions fd, int minMarkerCntParam, double residualTol
   // auto saveError = log.save("/home/booster/log.rrd");
   // if (saveError.is_err()) prtErr(format("Rerun log save Error: %s", saveError.description.c_str()));
   // }
-}
-
-uint64_t Locator::getBinKey(const Particle &p) {
-  // Spatial Hashing
-  // x, y mapped to indices based on resolution
-  // theta mapped to index
-  // key = (xIdx << 42) | (yIdx << 21) | thIdx
-  // Assuming 21 bits per axis is enough (2M units)
-
-  // Offset to ensure positive indices
-  double offX = fieldDimensions.length / 2.0 + pfInitFieldMargin + 5.0; // Margin
-  double offY = fieldDimensions.width / 2.0 + pfInitFieldMargin + 5.0;
-
-  uint64_t xIdx = (uint64_t)((p.x + offX) / pfResolutionX);
-  uint64_t yIdx = (uint64_t)((p.y + offY) / pfResolutionY);
-  uint64_t thIdx = (uint64_t)(toPInPI(p.theta) / pfResolutionTheta); // 0~2PI
-
-  return (xIdx << 42) | (yIdx << 21) | thIdx;
-}
-
-int Locator::calcKLDTarget(int k) {
-  if (k <= 1) return minParticles;
-
-  // Wilson-Hilferty approximation
-  // n = (k-1) / (2 * epsilon) * { 1 - 2/(9(k-1)) + z_alpha * sqrt(2/(9(k-1))) }^3
-
-  double k_1 = (double)(k - 1);
-  double term1 = 1.0 - 2.0 / (9.0 * k_1);
-  double term2 = kldZ * sqrt(2.0 / (9.0 * k_1));
-  double term = term1 + term2;
-
-  double n = (k_1 / (2.0 * kldErr)) * (term * term * term);
-
-  return (int)ceil(n);
 }
 
 void Locator::globalInitPF(Pose2D currentOdom) {
@@ -333,7 +292,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       }
       double logLikelihood = -0.5 * sumCost;
 
-      double likelihood = 0.3 * exp(logLikelihood);
+      double likelihood = exp(logLikelihood * this->pfLikelihoodWeight);
       p.weight *= likelihood;
     }
     totalWeight += p.weight;
@@ -357,14 +316,12 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
     sqSum += p.weight * p.weight;
   double ess = 1.0 / (sqSum + 1e-9);
 
-  // KLD Resampling
-  if (ess < pfParticles.size() * pfEssThreshold || pfParticles.size() < minParticles) {
+  // Fixed-Size Resampling
+  if (ess < pfParticles.size() * pfEssThreshold || pfParticles.size() < (size_t)pfNumParticles) {
     vector<Particle> newParticles;
-    newParticles.reserve(maxParticles);
+    newParticles.reserve(pfNumParticles);
 
     // 2. CDF Construction for Multinomial Sampling
-    // Since M (target size) varies, we can't use systematic resampling easily (step size depends on M)
-    // We use CDF binary search which is O(log N) per sample.
     std::vector<double> cdf(pfParticles.size());
     cdf[0] = pfParticles[0].weight;
     for (size_t i = 1; i < pfParticles.size(); ++i) {
@@ -372,12 +329,6 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
     }
     // Ensure last is 1.0 (handle float errors)
     cdf.back() = 1.0;
-
-    // KLD State
-    std::unordered_set<uint64_t> bins;
-    int k_bins = 0;           // Number of non-empty bins
-    int M_chi = minParticles; // Target number of particles (adaptive)
-    int M_generated = 0;
 
     // Helper to pick from CDF
     auto sampleCDF = [&]() -> const Particle & {
@@ -388,16 +339,10 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       return pfParticles[idx];
     };
 
-    // Adaptive Loop
-    // Continue while we have fewer particles than target M_chi
-    // OR fewer than minParticles
-    // AND haven't exceeded maxParticles
-
-    while ((M_generated < M_chi || M_generated < minParticles) && M_generated < maxParticles) {
+    for (int i = 0; i < pfNumParticles; ++i) {
       Particle pNew;
 
-      // Random Injection (Augmented MCL logic can be integrated here)
-      // Check injection ratio
+      // Random Injection
       if (uniformRandom(0.0, 1.0) < pfInjectionRatio) {
         double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
         double xMax = fieldDimensions.length / 2.0 + pfInitFieldMargin;
@@ -407,29 +352,14 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
         pNew.x = uniformRandom(xMin, xMax);
         pNew.y = uniformRandom(yMin, yMax);
         pNew.theta = toPInPI(uniformRandom(-M_PI, M_PI));
-        pNew.weight = 1.0; // Reset weight
+        pNew.weight = 1.0;
       } else {
         // Resample from CDF
         pNew = sampleCDF();
-        pNew.weight = 1.0; // Reset weight
+        pNew.weight = 1.0;
       }
-
-      // Add noise (optional, but good for KLD exploration)
-      // If we don't add noise here, KLD might under-estimate if particles stack perfectly
-      // KLD assumes samples are drawn from the proposal, which usually includes motion noise.
-      // Since we are resampling *after* correction, we are essentially building the belief for the *next* step.
-      // Usually KLD is done *after* prediction+correction? No, KLD determines how many samples to keep for the *next* prior.
 
       newParticles.push_back(pNew);
-      M_generated++;
-
-      // Update KLD bins
-      uint64_t key = getBinKey(pNew);
-      if (bins.find(key) == bins.end()) {
-        bins.insert(key);
-        k_bins++;
-        if (k_bins > 1) { M_chi = calcKLDTarget(k_bins); }
-      }
     }
 
     // Normalize weights for new set
@@ -438,7 +368,7 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       p.weight = w_uni;
 
     pfParticles = newParticles;
-    prtWarn(format("[PF] KLD Resample: k_bins=%d -> M_chi=%d | New Size=%zu", k_bins, M_chi, pfParticles.size()));
+    prtWarn(format("[PF] Resample: Size=%zu", pfParticles.size()));
   }
 }
 
