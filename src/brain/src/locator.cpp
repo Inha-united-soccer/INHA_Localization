@@ -138,6 +138,40 @@ void Locator::init(FieldDimensions fd, int minMarkerCntParam, double residualTol
   // }
 }
 
+uint64_t Locator::getBinKey(const Particle &p) {
+  // Spatial Hashing
+  // x, y mapped to indices based on resolution
+  // theta mapped to index
+  // key = (xIdx << 42) | (yIdx << 21) | thIdx
+  // Assuming 21 bits per axis is enough (2M units)
+
+  // Offset to ensure positive indices
+  double offX = fieldDimensions.length / 2.0 + pfInitFieldMargin + 5.0; // Margin
+  double offY = fieldDimensions.width / 2.0 + pfInitFieldMargin + 5.0;
+
+  uint64_t xIdx = (uint64_t)((p.x + offX) / pfResolutionX);
+  uint64_t yIdx = (uint64_t)((p.y + offY) / pfResolutionY);
+  uint64_t thIdx = (uint64_t)(toPIn2PI(p.theta) / pfResolutionTheta); // 0~2PI
+
+  return (xIdx << 42) | (yIdx << 21) | thIdx;
+}
+
+int Locator::calcKLDTarget(int k) {
+  if (k <= 1) return minParticles;
+
+  // Wilson-Hilferty approximation
+  // n = (k-1) / (2 * epsilon) * { 1 - 2/(9(k-1)) + z_alpha * sqrt(2/(9(k-1))) }^3
+
+  double k_1 = (double)(k - 1);
+  double term1 = 1.0 - 2.0 / (9.0 * k_1);
+  double term2 = kldZ * sqrt(2.0 / (9.0 * k_1));
+  double term = term1 + term2;
+
+  double n = (k_1 / (2.0 * kldErr)) * (term * term * term);
+
+  return (int)ceil(n);
+}
+
 void Locator::globalInitPF(Pose2D currentOdom) {
   double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
   double xMax = pfInitFieldMargin;
@@ -227,10 +261,12 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
   }
 
   double totalWeight = 0;
+  double maxWeight = -1.0;
 
   double invVarX = this->invPfObsVarX;
   double invVarY = this->invPfObsVarY;
 
+  // 1. Weight Update
   for (auto &p : pfParticles) {
     double xMinConstraint = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
     double xMaxConstraint = fieldDimensions.length / 2.0 + pfInitFieldMargin;
@@ -287,13 +323,11 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       double sumCost = 0.0;
       for (int i = 0; i < nObs; ++i) {
         int j = assignment[i];
-        if (j < 0) continue;
+        if (j < 0) continue; // Should not happen
 
         if (j < nMap) {
-          // Matched to real marker
           sumCost += flatCostMatrix[i * nCols + j];
         } else {
-          // Matched to dummy (unmatched)
           if (obsInFieldBuf[i].confidence > this->pfUnmatchedPenaltyConfThr) { sumCost += baseRejectCost; }
         }
       }
@@ -303,176 +337,341 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       p.weight *= likelihood;
     }
     totalWeight += p.weight;
+    if (p.weight > maxWeight) maxWeight = p.weight;
   }
 
   // Normalization
   if (totalWeight < 1e-10) {
     for (auto &p : pfParticles)
       p.weight = 1.0 / pfParticles.size();
+    totalWeight = 1.0;
   } else {
     for (auto &p : pfParticles)
       p.weight /= totalWeight;
   }
 
-  double p_inject = this->pfInjectionRatio;
-
+  // Updated ESS calculation for Dynamic K logic in getEstimatePF (stored implicitly in weights)
+  // For KLD step, we use resample threshold
   double sqSum = 0;
   for (auto &p : pfParticles)
     sqSum += p.weight * p.weight;
   double ess = 1.0 / (sqSum + 1e-9);
 
-  if (ess < pfParticles.size() * pfEssThreshold) {
+  // KLD Resampling
+  if (ess < pfParticles.size() * pfEssThreshold || pfParticles.size() < minParticles) {
     vector<Particle> newParticles;
     newParticles.reserve(maxParticles);
 
-    // Low Variance Sampling
-    double r = uniformRandom(0.0, 1.0 / pfParticles.size());
-    double c = pfParticles[0].weight;
-    int i = 0;
+    // 2. CDF Construction for Multinomial Sampling
+    // Since M (target size) varies, we can't use systematic resampling easily (step size depends on M)
+    // We use CDF binary search which is O(log N) per sample.
+    std::vector<double> cdf(pfParticles.size());
+    cdf[0] = pfParticles[0].weight;
+    for (size_t i = 1; i < pfParticles.size(); ++i) {
+      cdf[i] = cdf[i - 1] + pfParticles[i].weight;
+    }
+    // Ensure last is 1.0 (handle float errors)
+    cdf.back() = 1.0;
 
-    int targetNum = pfParticles.size();
+    // KLD State
+    std::unordered_set<uint64_t> bins;
+    int k_bins = 0;           // Number of non-empty bins
+    int M_chi = minParticles; // Target number of particles (adaptive)
+    int M_generated = 0;
 
-    for (int m = 0; m < targetNum; m++) {
-      double u = r + (double)m / targetNum;
-      while (u > c) {
-        i = (i + 1) % pfParticles.size();
-        c += pfParticles[i].weight;
-      }
+    // Helper to pick from CDF
+    auto sampleCDF = [&]() -> const Particle & {
+      double r = uniformRandom(0.0, 1.0);
+      auto it = std::upper_bound(cdf.begin(), cdf.end(), r);
+      int idx = std::distance(cdf.begin(), it);
+      if (idx >= pfParticles.size()) idx = pfParticles.size() - 1;
+      return pfParticles[idx];
+    };
 
-      Particle newP = pfParticles[i];
+    // Adaptive Loop
+    // Continue while we have fewer particles than target M_chi
+    // OR fewer than minParticles
+    // AND haven't exceeded maxParticles
 
-      // Injection logic inside loop
-      if (uniformRandom(0.0, 1.0) < p_inject) {
+    while ((M_generated < M_chi || M_generated < minParticles) && M_generated < maxParticles) {
+      Particle pNew;
+
+      // Random Injection (Augmented MCL logic can be integrated here)
+      // Check injection ratio
+      if (uniformRandom(0.0, 1.0) < pfInjectionRatio) {
         double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
         double xMax = fieldDimensions.length / 2.0 + pfInitFieldMargin;
         double yMin = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
         double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
 
-        newP.x = uniformRandom(xMin, xMax);
-        newP.y = uniformRandom(yMin, yMax);
-        newP.theta = toPInPI(uniformRandom(-M_PI, M_PI));
-        newP.weight = 1.0;
+        pNew.x = uniformRandom(xMin, xMax);
+        pNew.y = uniformRandom(yMin, yMax);
+        pNew.theta = toPInPI(uniformRandom(-M_PI, M_PI));
+        pNew.weight = 1.0; // Reset weight
+      } else {
+        // Resample from CDF
+        pNew = sampleCDF();
+        pNew.weight = 1.0; // Reset weight
       }
-      newParticles.push_back(newP);
+
+      // Add noise (optional, but good for KLD exploration)
+      // If we don't add noise here, KLD might under-estimate if particles stack perfectly
+      // KLD assumes samples are drawn from the proposal, which usually includes motion noise.
+      // Since we are resampling *after* correction, we are essentially building the belief for the *next* step.
+      // Usually KLD is done *after* prediction+correction? No, KLD determines how many samples to keep for the *next* prior.
+
+      newParticles.push_back(pNew);
+      M_generated++;
+
+      // Update KLD bins
+      uint64_t key = getBinKey(pNew);
+      if (bins.find(key) == bins.end()) {
+        bins.insert(key);
+        k_bins++;
+        if (k_bins > 1) { M_chi = calcKLDTarget(k_bins); }
+      }
     }
-    int M = newParticles.size();
+
     // Normalize weights for new set
+    double w_uni = 1.0 / newParticles.size();
     for (auto &p : newParticles)
-      p.weight = 1.0 / M;
+      p.weight = w_uni;
 
     pfParticles = newParticles;
+    prtWarn(format("[PF] KLD Resample: k_bins=%d -> M_chi=%d | New Size=%zu", k_bins, M_chi, pfParticles.size()));
   }
 }
 
 Pose2D Locator::getEstimatePF() {
   if (pfParticles.empty()) return {0, 0, 0};
 
+  // 1. Normalized Dynamic K
+  // K proportional to ESS ratio.
+  // High ESS (converged) -> small K (e.g. 50). Low ESS (dispersed) -> large K (e.g. 150).
+  double ess = 0;
+  double sqSum = 0;
+  for (const auto &p : pfParticles)
+    sqSum += p.weight * p.weight;
+  ess = 1.0 / (sqSum + 1e-9);
+
+  size_t N = pfParticles.size();
+  size_t K = std::clamp((int)((ess / N) * 200), 50, 150);
+  K = std::min(K, N);
+
+  // Partial Sort to get Top-K heavy particles
+  std::nth_element(pfParticles.begin(), pfParticles.begin() + K, pfParticles.end(), [](const Particle &a, const Particle &b) { return a.weight > b.weight; });
+  // Optional: Sort the top K for deterministic greedy order
+  std::sort(pfParticles.begin(), pfParticles.begin() + K, [](const Particle &a, const Particle &b) { return a.weight > b.weight; });
+
+  // 2. Clustering with 2-Stage Gating
   struct Cluster {
     double totalWeight = 0;
     double xSum = 0;
     double ySum = 0;
     double cosSum = 0;
     double sinSum = 0;
-    double leaderX = 0;
-    double leaderY = 0;
-    double leaderTheta = 0;
+    Pose2D leader;        // Fixed Anchor
+    Pose2D centroid;      // Moving Average
+    double maxDist = 0.0; // Debug metric (meters)
+    int count = 0;
+
+    void add(const Particle &p) {
+      totalWeight += p.weight;
+      xSum += p.x * p.weight;
+      ySum += p.y * p.weight;
+      cosSum += cos(p.theta) * p.weight;
+      sinSum += sin(p.theta) * p.weight;
+      count++;
+      centroid = {xSum / totalWeight, ySum / totalWeight, atan2(sinSum, cosSum)};
+    }
+  };
+  std::vector<Cluster> clusters;
+  clusters.reserve(10); // reserve some slots
+
+  // Calculate mass of top K to use relative early exit
+  double topKMass = 0;
+  for (size_t i = 0; i < K; ++i)
+    topKMass += pfParticles[i].weight;
+
+  double cumW = 0;
+  int processed = 0;
+  int K_min = 20; // Minimum particles to process before exit
+
+  // Params for Gating (tuned for normalized dist)
+  // distSq = (dx^2)*invVarX + (dy^2)*invVarY
+  // 1.0 ~ 1 sigma.
+  double GuardThr = 16.0; // ~4 sigma squared (Anchor)
+  double TightThr = 4.0;  // ~2 sigma squared (Refine)
+  double LooseThr = 9.0;  // ~3 sigma squared (Boundary)
+
+  auto getMahalanobis = [&](const Particle &p, const Pose2D &target, double alignTheta) {
+    // Rotate p into target's frame (alignTheta)
+    double dx_g = p.x - target.x;
+    double dy_g = p.y - target.y;
+    double c = cos(alignTheta);
+    double s = sin(alignTheta);
+    double dx_l = c * dx_g + s * dy_g;
+    double dy_l = -s * dx_g + c * dy_g;
+
+    // Anisotropic metric
+    return (dx_l * dx_l) * invPfObsVarX + (dy_l * dy_l) * invPfObsVarY;
   };
 
-  std::vector<Cluster> clusters;
+  auto getEuclid = [&](const Particle &p, const Pose2D &target) { return std::hypot(p.x - target.x, p.y - target.y); };
 
-  // Max element instead of sort
-  // auto bestIt = std::max_element(pfParticles.begin(), pfParticles.end(), [](const Particle &a, const Particle &b) { return a.weight < b.weight; });
+  for (size_t i = 0; i < K; ++i) {
+    const auto &p = pfParticles[i];
+    cumW += p.weight;
+    processed++;
 
-  // if (bestIt != pfParticles.end()) { return {bestIt->x, bestIt->y, bestIt->theta}; }
-  // return {pfParticles[0].x, pfParticles[0].y, pfParticles[0].theta};
+    // Early Exit: if we covered 90% of the significant mass and processed enough
+    if (cumW > topKMass * 0.9 && processed > K_min) break;
 
-  // Take weighted average of top 10 particles
-  // double sumW = 0.0;
-  // double x = 0.0, y = 0.0, sumSin = 0.0, sumCos = 0.0;
-
-  // int count = std::min((int)sortedIndices.size(), 10);
-  // for (int i = 0; i < count; ++i) {
-  //   const auto &p = pfParticles[sortedIndices[i]];
-  //   x += p.x * p.weight;
-  //   y += p.y * p.weight;
-  //   sumSin += sin(p.theta) * p.weight;
-  //   sumCos += cos(p.theta) * p.weight;
-  //   sumW += p.weight;
-  // }
-
-  // if (sumW > 1e-9) {
-  //   return {x / sumW, y / sumW, atan2(sumSin, sumCos)};
-  // } else {
-  //   // Fallback if weights are zero (shouldn't happen with proper normalization)
-  //   return {pfParticles[sortedIndices[0]].x, pfParticles[sortedIndices[0]].y, pfParticles[sortedIndices[0]].theta};
-  // }
-
-  // sort by weight
-  std::sort(pfParticles.begin(), pfParticles.end(), [](const Particle &a, const Particle &b) { return a.weight > b.weight; });
-  // clustering
-  for (auto &p : pfParticles) {
-    bool added = false;
+    bool matched = false;
     for (auto &c : clusters) {
-      // 게이팅
-      double d = std::hypot(p.x - c.leaderX, p.y - c.leaderY);
-      double dTheta = std::fabs(toPInPI(p.theta - c.leaderTheta));
-      // weighted sum 구하기
-      if (d < pfClusterDistThr && dTheta < pfClusterThetaThr) {
-        c.totalWeight += p.weight;
-        c.xSum += p.x * p.weight;
-        c.ySum += p.y * p.weight;
-        c.cosSum += cos(p.theta) * p.weight;
-        c.sinSum += sin(p.theta) * p.weight;
-        added = true;
+      // Use Leader theta for small clusters to avoid unstable centroid theta
+      // Use Centroid theta only when enough samples (e.g., > 5)
+      double alignTheta = c.leader.theta;
+      Pose2D refPose = (c.count < 5) ? c.leader : c.centroid;
+
+      double dSqLeader = getMahalanobis(p, c.leader, alignTheta);
+      double dSqCentroid = getMahalanobis(p, refPose, alignTheta);
+
+      // Explicit Boundary Logic
+      // 1. Must be within Guard of Leader (Anchor)
+      // 2. Must be within Tight of Centroid OR (Near Boundary AND within Loose)
+      if (dSqLeader < GuardThr) {
+        bool isNearBoundary = (dSqLeader > GuardThr * 0.6); // Tune ratio
+        if (dSqCentroid < TightThr) {
+          matched = true;
+        } else if (isNearBoundary && dSqCentroid < LooseThr) {
+          matched = true;
+        }
+      }
+
+      // Also check angular difference (simple check)
+      if (matched) {
+        double dTheta = std::fabs(toPInPI(p.theta - refPose.theta));
+        if (dTheta > 1.0) matched = false; // ~57 deg guard
+      }
+
+      if (matched) {
+        c.add(p);
+        c.maxDist = std::max(c.maxDist, getEuclid(p, c.leader));
         break;
       }
     }
-    // cluster에 포함되지 않았다면 다른 클러스터의 대장이 됨
-    if (!added) {
+
+    if (!matched) {
       Cluster c;
-      c.totalWeight = p.weight;
-      c.xSum = p.x * p.weight;
-      c.ySum = p.y * p.weight;
-      c.cosSum = cos(p.theta) * p.weight;
-      c.sinSum += sin(p.theta) * p.weight;
-      c.leaderX = p.x;
-      c.leaderY = p.y;
-      c.leaderTheta = p.theta;
+      c.leader = {p.x, p.y, p.theta};
+      c.add(p); // Init centroid
       clusters.push_back(c);
     }
   }
 
-  // 가장 큰 가중치 합을 가진 클러스터 선택
-  int bestClusterIdx = -1;
-  double maxWeight = -1.0;
+  // 3. Selection w/ Persistent Hysteresis
+  double u = 1.0 - (ess / N);
+  double lambda = 0.5 * (1.0 + 5.0 * u); // base 0.5, max ~3.0
 
-  for (int i = 0; i < clusters.size(); i++) {
-    if (clusters[i].totalWeight > maxWeight) {
-      maxWeight = clusters[i].totalWeight;
-      bestClusterIdx = i;
+  Cluster *best = nullptr;
+  Cluster *second = nullptr;
+  double bestScore = -1e9;
+
+  // Consider Top-2 current clusters
+  // And virtually consider persistent clusters (if they are distinct from current?)
+  // Simplified: Just punish current clusters by distance to persistent best
+
+  // If we have no persistent info (first run), just pick max weight
+  if (!hasSmoothedPose) {
+    auto it = std::max_element(clusters.begin(), clusters.end(), [](const Cluster &a, const Cluster &b) { return a.totalWeight < b.totalWeight; });
+    if (it != clusters.end()) best = &(*it);
+  } else {
+    for (auto &c : clusters) {
+      // Distance to PREVIOUS ESTIMATE (Hysteresis)
+      // We can also check prevBestCentroid and prevSecondCentroid
+      // For now, simple hysteresis against smoothedPose is safest
+      double d = std::hypot(c.centroid.x - smoothedPose.x, c.centroid.y - smoothedPose.y);
+      double score = c.totalWeight - lambda * d;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = &c;
+      }
+    }
+    // Find second best for persistence update
+    double secondScore = -1e9;
+    for (auto &c : clusters) {
+      if (&c == best) continue;
+      double d = std::hypot(c.centroid.x - smoothedPose.x, c.centroid.y - smoothedPose.y);
+      double score = c.totalWeight - lambda * d;
+      if (score > secondScore) {
+        secondScore = score;
+        second = &c;
+      }
     }
   }
 
-  if (bestClusterIdx == -1) return {0, 0, 0};
+  if (!best) return {0, 0, 0}; // Should not happen
 
-  // expected value
-  Pose2D rawEstPose;
-  auto &bestC = clusters[bestClusterIdx];
-  if (bestC.totalWeight > 0) {
-    rawEstPose = Pose2D{bestC.xSum / bestC.totalWeight, bestC.ySum / bestC.totalWeight, atan2(bestC.sinSum, bestC.cosSum)}; // 기댓값
-  } else {
-    rawEstPose = Pose2D{bestC.leaderX, bestC.leaderY, bestC.leaderTheta};
+  // 4. Stability Check & Freeze
+  double lc_dist = std::hypot(best->leader.x - best->centroid.x, best->leader.y - best->centroid.y);
+  if (lc_dist > 0.2) { // 20cm divergence -> Unstable
+    freezeCounter = 5;
+    // prtWarn(format("[PF] Instability Detected: L-C Dist=%.3f > 0.2 -> Freeze", lc_dist)); // Optional Log
   }
 
-  // EMA smoothing
+  Pose2D result = best->centroid;
+
+  // 5. Output Logic
+  if (freezeCounter > 0) {
+    freezeCounter--;
+    if (freezeCounter % 2 == 0) { // Log occasionally
+      prtWarn(format("[PF] FROZEN: Counter=%d | Return PrevSmoothed (%.2f, %.2f, %.0f)", freezeCounter, smoothedPose.x, smoothedPose.y,
+                     rad2deg(smoothedPose.theta)));
+    }
+    // Freeze Mode: Return previous estimate. Do NOT update EMA. Do NOT update Persistence.
+    if (hasSmoothedPose)
+      return smoothedPose;
+    else
+      return result; // Fallback if no history
+  }
+
+  // 6. Update State (Stable)
+  prevBestCentroid = best->centroid;
+  if (second)
+    prevSecondCentroid = second->centroid;
+  else
+    prevSecondCentroid = best->centroid; // duplicate if only 1 cluster
+
+  // Jump-Aware EMA
   if (!hasSmoothedPose) {
-    smoothedPose = rawEstPose;
+    smoothedPose = result;
     hasSmoothedPose = true;
   } else {
-    smoothedPose.x = pfSmoothAlpha * rawEstPose.x + (1.0 - pfSmoothAlpha) * smoothedPose.x;
-    smoothedPose.y = pfSmoothAlpha * rawEstPose.y + (1.0 - pfSmoothAlpha) * smoothedPose.y;
-    double diffTheta = toPInPI(rawEstPose.theta - smoothedPose.theta);
-    smoothedPose.theta = toPInPI(smoothedPose.theta + pfSmoothAlpha * diffTheta);
+    double dx = result.x - smoothedPose.x;
+    double dy = result.y - smoothedPose.y;
+    double dTheta = std::fabs(toPInPI(result.theta - smoothedPose.theta));
+
+    // Jump metric: 0.2m ~ 30deg(0.52rad)
+    double jump = std::hypot(dx, dy) + (0.2 / 0.52) * dTheta;
+
+    double alpha = pfSmoothAlpha;
+    if (jump > 0.5) {
+      alpha = 0.1; // Slow update on jump
+      prtWarn(format("[PF] JUMP DETECTED: dist=%.3f > 0.5 -> alpha=0.1", jump));
+    }
+
+    smoothedPose.x = alpha * result.x + (1.0 - alpha) * smoothedPose.x;
+    smoothedPose.y = alpha * result.y + (1.0 - alpha) * smoothedPose.y;
+    double diffTheta = toPInPI(result.theta - smoothedPose.theta);
+    smoothedPose.theta = toPInPI(smoothedPose.theta + alpha * diffTheta);
+  }
+
+  // Debug Log (Periodic)
+  static int logCnt = 0;
+  if (logCnt++ % 60 == 0) { // ~2 sec interval
+    prtWarn(format("[PF] Est: K=%zu | Clusters=%zu | ESS=%.1f | BestW=%.3f | L-C=%.3f", K, clusters.size(), ess, best->totalWeight, lc_dist));
   }
 
   return smoothedPose;
