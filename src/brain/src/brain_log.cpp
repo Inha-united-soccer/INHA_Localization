@@ -4,7 +4,7 @@
 #include "utils/print.h"
 #include "utils/misc.h"
 
-BrainLog::BrainLog(Brain *argBrain) : brain(argBrain), log_tcp("robocup"), log_file("robocup")
+BrainLog::BrainLog(Brain *argBrain) : log_tcp("robocup"), log_file("robocup"), brain(argBrain)
 {
     enable_log_tcp = brain->config->rerunLogEnableTCP;
     enable_log_file = brain->config->rerunLogEnableFile;

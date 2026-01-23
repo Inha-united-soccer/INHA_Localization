@@ -91,7 +91,7 @@ void Locator::calcFieldMarkers(FieldDimensions fd) {
 
 void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
                           double injectionRatio, double zeroMotionTransThresh, double zeroMotionRotThresh, bool resampleWhenStopped, double clusterDistThr,
-                          double clusterThetaThr, double smoothAlpha, double invObsVarX, double invObsVarY, double unmatchedPenaltyConfThr,
+                          double clusterThetaThr, double smoothAlpha, double invObsVarX, double invObsVarY, double likelihoodWeight, double unmatchedPenaltyConfThr,
                           double pfEssThreshold) {
   this->pfNumParticles = numParticles;
   this->pfInitFieldMargin = initMargin;
@@ -113,6 +113,7 @@ void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, dou
 
   this->invPfObsVarX = invObsVarX;
   this->invPfObsVarY = invObsVarY;
+  this->pfLikelihoodWeight = likelihoodWeight;
   this->pfUnmatchedPenaltyConfThr = unmatchedPenaltyConfThr;
   this->pfEssThreshold = pfEssThreshold;
 }
