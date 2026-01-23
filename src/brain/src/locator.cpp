@@ -91,8 +91,8 @@ void Locator::calcFieldMarkers(FieldDimensions fd) {
 
 void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
                           double injectionRatio, double zeroMotionTransThresh, double zeroMotionRotThresh, bool resampleWhenStopped, double clusterDistThr,
-                          double clusterThetaThr, double smoothAlpha, double invObsVarX, double invObsVarY, double likelihoodWeight, double unmatchedPenaltyConfThr,
-                          double pfEssThreshold) {
+                          double clusterThetaThr, double smoothAlpha, double invObsVarX, double invObsVarY, double likelihoodWeight,
+                          double unmatchedPenaltyConfThr, double pfEssThreshold) {
   this->pfNumParticles = numParticles;
   this->pfInitFieldMargin = initMargin;
   this->pfInitOwnHalfOnly = ownHalf;
@@ -196,9 +196,9 @@ void Locator::predictPF(Pose2D currentOdomPose) {
   double alpha3 = pfAlpha3;
   double alpha4 = pfAlpha4;
 
-  double rot1_dev = alpha1 * fabs(rot1) + alpha2 * trans + 0.0001;
-  double trans_dev = alpha3 * trans + alpha4 * (fabs(rot1) + fabs(rot2)) + 0.0001;
-  double rot2_dev = alpha1 * fabs(rot2) + alpha2 * trans + 0.0001;
+  double rot1_dev = alpha1 * fabs(rot1) + alpha2 * trans;
+  double trans_dev = alpha3 * trans + alpha4 * (fabs(rot1) + fabs(rot2));
+  double rot2_dev = alpha1 * fabs(rot2) + alpha2 * trans;
 
   for (auto &p : pfParticles) {
     double n_rot1 = rot1 + (gaussianRandom(0, rot1_dev));
@@ -310,19 +310,16 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       p.weight /= totalWeight;
   }
 
-  // Updated ESS calculation for Dynamic K logic in getEstimatePF (stored implicitly in weights)
-  // For KLD step, we use resample threshold
   double sqSum = 0;
   for (auto &p : pfParticles)
     sqSum += p.weight * p.weight;
   double ess = 1.0 / (sqSum + 1e-9);
 
-  // Fixed-Size Resampling
-  if (ess < pfParticles.size() * pfEssThreshold || pfParticles.size() < (size_t)pfNumParticles) {
+  if (ess < pfParticles.size() * pfEssThreshold) {
     vector<Particle> newParticles;
     newParticles.reserve(pfNumParticles);
 
-    // 2. CDF Construction for Multinomial Sampling
+    // CDF Construction for Multinomial Sampling
     std::vector<double> cdf(pfParticles.size());
     cdf[0] = pfParticles[0].weight;
     for (size_t i = 1; i < pfParticles.size(); ++i) {
@@ -340,19 +337,22 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       return pfParticles[idx];
     };
 
+    double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
+    double xMax = fieldDimensions.length / 2.0 + pfInitFieldMargin;
+    double yMin = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
+    double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
+    double tMin = brain->data->robotPoseToField.theta - M_PI / 4;
+    double tMax = brain->data->robotPoseToField.theta + M_PI / 4;
+
     for (int i = 0; i < pfNumParticles; ++i) {
       Particle pNew;
 
       // Random Injection
       if (uniformRandom(0.0, 1.0) < pfInjectionRatio) {
-        double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
-        double xMax = fieldDimensions.length / 2.0 + pfInitFieldMargin;
-        double yMin = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
-        double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
 
         pNew.x = uniformRandom(xMin, xMax);
         pNew.y = uniformRandom(yMin, yMax);
-        pNew.theta = toPInPI(uniformRandom(-M_PI, M_PI));
+        pNew.theta = toPInPI(uniformRandom(tMin, tMax));
         pNew.weight = 1.0;
       } else {
         // Resample from CDF
