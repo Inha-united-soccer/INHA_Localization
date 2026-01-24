@@ -61,7 +61,7 @@ brain_node:
       pf_injection_angle: 0.785 # 45 degrees
 
       pf_inv_obs_var_x: 6.0
-      pf_inv_obs_var_y: 11.0
+      pf_inv_obs_var_y: 8.0
 
       pf_likelihood_weight: 0.7
 
@@ -91,7 +91,7 @@ brain_node:
       pf_weight_decay_gamma: 0.1
       
       pf_enable_orientation_gating: true
-      pf_orientation_gating_thr: 2.0 # ~91 degrees
+      pf_orientation_gating_thr: 2.0 # ~114 degrees
 
       pf_sensor_noise: 1.5
       min_marker_count: 5
