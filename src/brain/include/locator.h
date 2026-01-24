@@ -147,6 +147,10 @@ public:
   double pfWeightDecayGamma = 0.1;
   double pfWeightDecayBeta = 0.0;
 
+  // Orientation Gating
+  bool pfEnableOrientationGating = true;
+  double pfOrientationGatingThr = 1.6;
+
   double pfSmoothAlpha = 0.4;
 
   // KLD State
@@ -156,7 +160,8 @@ public:
                    double clusterDistThr = 0.3, double clusterThetaThr = 0.35, double smoothAlpha = 0.4, double invObsVarX = 25.0, double invObsVarY = 25.0,
                    double likelihoodWeight = 0.3, double unmatchedPenaltyConfThr = 0.6, double pfEssThreshold = 0.4, double injectionDist = 3.0,
                    double injectionAngle = 0.785, double clusterMinWeight = 0.05, int clusterMinSize = 3, double hysteresisFactor = 1.2,
-                   double clusterRatioLimit = 0.9, double weightDecayR0 = 2.5, double weightDecayR1 = 4.0, double weightDecayGamma = 0.1);
+                   double clusterRatioLimit = 0.9, double weightDecayR0 = 2.5, double weightDecayR1 = 4.0, double weightDecayGamma = 0.1,
+                   bool enableOrientationGating = true, double orientationGatingThr = 1.6);
 
   // double pfObsVarX = 0.04;
   // double pfObsVarY = 0.04;

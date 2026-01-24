@@ -90,11 +90,8 @@ void Locator::calcFieldMarkers(FieldDimensions fd) {
 }
 
 void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
-                          double injectionRatio, double zeroMotionTransThresh, double zeroMotionRotThresh, bool resampleWhenStopped, double clusterDistThr,
-                          double clusterThetaThr, double smoothAlpha, double invObsVarX, double invObsVarY, double likelihoodWeight,
-                          double unmatchedPenaltyConfThr, double pfEssThreshold, double injectionDist, double injectionAngle, double clusterMinWeight,
                           int clusterMinSize, double hysteresisFactor, double clusterRatioLimit, double weightDecayR0, double weightDecayR1,
-                          double weightDecayGamma) {
+                          double weightDecayGamma, bool enableOrientationGating, double orientationGatingThr) {
   this->pfNumParticles = numParticles;
   this->pfInitFieldMargin = initMargin;
   this->pfInitOwnHalfOnly = ownHalf;
@@ -133,6 +130,9 @@ void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, dou
   } else {
     this->pfWeightDecayBeta = 0.0;
   }
+
+  this->pfEnableOrientationGating = enableOrientationGating;
+  this->pfOrientationGatingThr = orientationGatingThr;
 }
 
 void Locator::clusterParticles() {
@@ -408,6 +408,14 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
     if (p.x < xMinConstraint || p.x > xMaxConstraint || p.y < yMinConstraint || p.y > yMaxConstraint) {
       p.weight = 0.0;
     } else {
+      // Orientation Gating
+      if (hasSmoothedPose && pfEnableOrientationGating) {
+        if (fabs(toPInPI(p.theta - smoothedPose.theta)) > pfOrientationGatingThr) {
+          p.weight = 0.0;
+          continue;
+        }
+      }
+
       Pose2D pose{p.x, p.y, p.theta};
 
       double c = cos(pose.theta);

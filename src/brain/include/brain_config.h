@@ -120,6 +120,10 @@ public:
   double pfWeightDecayR1 = 4.0;
   double pfWeightDecayGamma = 0.1;
 
+  // Orientation Gating
+  bool pfEnableOrientationGating = true;
+  double pfOrientationGatingThr = 1.6;
+
   double pfSmoothAlpha = 0.4;
 
   // KLD Sampling Parameters

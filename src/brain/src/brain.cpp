@@ -320,6 +320,9 @@ void Brain::loadConfig() {
   get_parameter("locator.pf_weight_decay_r1", config->pfWeightDecayR1);
   get_parameter("locator.pf_weight_decay_gamma", config->pfWeightDecayGamma);
 
+  get_parameter("locator.pf_enable_orientation_gating", config->pfEnableOrientationGating);
+  get_parameter("locator.pf_orientation_gating_thr", config->pfOrientationGatingThr);
+
   get_parameter("locator.pf_smooth_alpha", config->pfSmoothAlpha);
   get_parameter("locator.ess_threshold", config->essThreshold);
 
