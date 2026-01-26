@@ -24,196 +24,75 @@ namespace chr = std::chrono;
 
 class Locator {
 public:
-  double convergeTolerance = 0.2;
-  // ... (skip unchanged lines)
-  // We can't insert include easily with replace_file_content unless we match context.
-  // Let's do multiple chunks.
-
-  double residualTolerance = 0.4;
-  double maxIteration = 20;
-  double muOffset = 2.0;
-  double numShrinkRatio = 0.85;
-  double offsetShrinkRatio = 0.8;
-  int minMarkerCnt = 3;
-  double enableLog = true;
-  string logIP = "127.0.0.1:9876";
-
-  rerun::RecordingStream log = rerun::RecordingStream("locator", "locator");
-  vector<FieldMarker> fieldMarkers;
-  // Pre-categorized markers
-  map<char, vector<FieldMarker>> mapByType;
-
-  FieldDimensions fieldDimensions;
-  Eigen::ArrayXXd hypos;
-  PoseBox2D constraints;
-  double offsetX, offsetY, offsetTheta;
-  Pose2D bestPose;
-  double bestResidual;
-
-  void init(FieldDimensions fd, int minMarkerCnt = 4, double residualTolerance = 0.4, double muOffsetParam = 2.0, bool enableLog = false,
-            string logIP = "127.0.0.1:9876");
-
-  void calcFieldMarkers(FieldDimensions fd);
-
-  LocateResult locateRobot(vector<FieldMarker> markers_r, PoseBox2D constraints, int numParticles = 200, double offsetX = 2.0, double offsetY = 2.0,
-                           double offsetTheta = M_PI / 4);
-
-  int genInitialParticles(int num = 200);
-
-  int genParticles();
-
-  FieldMarker markerToFieldFrame(FieldMarker marker, Pose2D pose);
-
-  double minDist(FieldMarker marker);
-
-  vector<double> getOffset(FieldMarker marker);
-
-  double residual(vector<FieldMarker> markers_r, Pose2D pose);
-
-  bool isConverged();
-
-  int calcProbs(vector<FieldMarker> markers_r);
-
-  Pose2D finalAdjust(vector<FieldMarker> markers_r, Pose2D pose);
-
-  inline double probDesity(double r, double mu, double sigma) {
-    if (sigma < 1e-5) return 0.0;
-    return 1 / sqrt(2 * M_PI * sigma * sigma) * exp(-(r - mu) * (r - mu) / (2 * sigma * sigma));
-  };
-
-  void logParticles();
-  void logParticles(double);
-
-  rerun::RecordingStream *logger = nullptr;
-  void setLog(rerun::RecordingStream *stream);
-
-  // MCL / Particle Filter State
   struct Particle {
     double x;
     double y;
     double theta;
     double weight;
-    int id = -1; // For clustering
+    int id = -1;
   };
-  struct ParticleCluster {
-    std::vector<int> indices;
-    double weightSum = 0.0;
-    Pose2D meanPose = {0, 0, 0};
-  };
-  std::vector<Particle> pfParticles;
-  Pose2D lastPFOdomPose = {0, 0, 0};
-  bool isPFInitialized = false;
-  double pfSensorNoiseR = 1.0;
 
-  // MCL Methods (PF Suffix)
-  void globalInitPF(Pose2D currentOdom);
-  void predictPF(Pose2D currentOdomPose);
-  void correctPF(const vector<FieldMarker> markers);
-  Pose2D getEstimatePF();
-  void clusterParticles(); // helper for getEstimatePF
-  bool getIsPFInitialized() const { return isPFInitialized; }
+  Pose2D lastOdomPose = {0, 0, 0};
+  Pose2D bestPose = {0, 0, 0};
+  Pose2D pose = {0, 0, 0};
 
-  // Augmented MCL State
-  double w_slow = 0.0;
-  double w_fast = 0.0;
-  double alpha_slow = 0.05;
-  double alpha_fast = 0.5;
-  double pfInjectionRatio = 0.2;
-
-  int pfNumParticles = 150;
-  double pfInitFieldMargin = 1.0;
-  bool pfInitOwnHalfOnly = true;
-
-  double pfAlpha1 = 0.08;  // rot -> rot
-  double pfAlpha2 = 0.005; // rot -> trans
-  double pfAlpha3 = 0.005; // trans -> rot
-  double pfAlpha4 = 0.005; // trans -> trans
-
-  double pfZeroMotionTransThresh = 0.01;
-  double pfZeroMotionRotThresh = 0.03;
-  bool pfResampleWhenStopped = false;
-  bool isRobotMoving = true;
-
-  double pfClusterDistThr = 0.3;
-  double pfClusterThetaThr = 0.35; // ~20 deg
-  double pfClusterMinWeight = 0.05;
-  int pfClusterMinSize = 3;
-  double pfHysteresisFactor = 1.2;
-  double pfClusterRatioLimit = 0.9;
-
-  // Weight Decay Parameters
-  double pfWeightDecayR0 = 2.5;
-  double pfWeightDecayR1 = 4.0;
-  double pfWeightDecayGamma = 0.1;
-  double pfWeightDecayBeta = 0.0;
-
-  // Orientation Gating
-  bool pfEnableOrientationGating = true;
-  double pfOrientationGatingThr = 1.6;
-
-  double pfSmoothAlpha = 0.4;
-
-  // KLD State
-
-  void setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
-                   double injectionRatio, double zeroMotionTransThresh = 0.001, double zeroMotionRotThresh = 0.002, bool resampleWhenStopped = false,
-                   double clusterDistThr = 0.3, double clusterThetaThr = 0.35, double smoothAlpha = 0.4, double invObsVarX = 25.0, double invObsVarY = 25.0,
-                   double likelihoodWeight = 0.3, double unmatchedPenaltyConfThr = 0.6, double pfEssThreshold = 0.4, double injectionDist = 3.0,
-                   double injectionAngle = 0.785, double clusterMinWeight = 0.05, int clusterMinSize = 3, double hysteresisFactor = 1.2,
-                   double clusterRatioLimit = 0.9, double weightDecayR0 = 2.5, double weightDecayR1 = 4.0, double weightDecayGamma = 0.1,
-                   bool enableOrientationGating = true, double orientationGatingThr = 1.6);
-
-  // double pfObsVarX = 0.04;
-  // double pfObsVarY = 0.04;
-  double invPfObsVarX = 1.4; // 0.7
-  double invPfObsVarY = 4.0; // 0.25
-  double pfLikelihoodWeight = 0.3;
-  double pfUnmatchedPenaltyConfThr = 0.6;
-
-  // Constrained Injection
-  double pfInjectionDist = 3.0;
-  double pfInjectionAngle = M_PI / 4.0;
-
+  FieldDimensions fieldDimensions;
   HungarianAlgorithm hungarian;
 
-  // Pose Smoothing
-  Pose2D smoothedPose = {0, 0, 0};
-  bool hasSmoothedPose = false;
-
-  // Hysteresis State
-  Pose2D prevBestCentroid = {0, 0, 0};
-  Pose2D prevSecondCentroid = {0, 0, 0};
-  int freezeCounter = 0;
-
+  vector<Particle> particles;
+  vector<FieldMarker> fieldMarkers;
+  vector<int> assignment;
   vector<double> flatCostMatrix;
-  vector<FieldMarker> obsInFieldBuf;
-  map<char, vector<FieldMarker>> obsByTypeBuf;
-  double baseRejectCost = 8.0;
+  vector<FieldMarker> obsInField;
+  vector<double> cdf;
+  map<char, vector<FieldMarker>> obsByType;
+  map<char, vector<FieldMarker>> mapByType;
 
-  double pfEssThreshold = 0.4;
+  bool hasPose = false;
+  bool isInitialized = false;
+  int numParticles = 150;
+  double initFieldMargin = 1.0;
+  double alpha1 = 0.08;
+  double alpha2 = 0.005;
+  double alpha3 = 0.005;
+  double alpha4 = 0.005;
+  double clusterDistThr = 0.3;
+  double clusterThetaThr = 0.35;
+  double clusterMinWeight = 0.05;
+  double orientationGatingThr = 1.6;
+  double smoothAlpha = 0.4;
+  double enableLog = true;
+  double invNormVar = 1.4;
+  double invPerpVar = 4.0;
+  double likelihoodWeight = 0.3;
+  double unmatchedPenaltyConfThr = 0.6;
+  double essThreshold = 0.4;
+
+  rerun::RecordingStream *logger = nullptr;
+
+  bool getIsInitialized() const { return isInitialized; }
+  void calcFieldMarkers(FieldDimensions fd);
+  void init(FieldDimensions fd, bool enableLogParam, string logIPParam);
+  void logParticles(double);
+  void setLog(rerun::RecordingStream *stream);
+  void globalInit(Pose2D currentOdom);
+  void predict(Pose2D currentOdomPose);
+  void correct(const vector<FieldMarker> markers);
+  void clusterParticles();
+  void setParams(int numParticles, double initMargin, std::vector<double> alphas, double smoothAlpha, double invObsVarX, double invObsVarY,
+                 double likelihoodWeight, double unmatchedPenaltyConfThr, double essThreshold, double clusterDistThr, double clusterThetaThr,
+                 double clusterMinWeight, double orientationGatingThr);
+
+  Pose2D findBestWeight();
+  Pose2D getEstimate();
+
+  string logIP = "127.0.0.1:9876";
 };
 
 class Brain;
 using namespace BT;
 
 void RegisterLocatorNodes(BT::BehaviorTreeFactory &factory, Brain *brain);
-
-class SelfLocate : public SyncActionNode {
-public:
-  SelfLocate(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
-
-  NodeStatus tick() override;
-
-  static PortsList providedPorts() {
-    return {
-        InputPort<string>("mode", "enter_field", "must be one of [trust_direction, face_forward, fall_recovery]"),
-        InputPort<double>("msecs_interval", 10000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-    };
-  };
-
-private:
-  Brain *brain;
-};
 
 class SelfLocateEnterField : public SyncActionNode {
 public:
@@ -224,120 +103,6 @@ public:
   static PortsList providedPorts() {
     return {
         InputPort<double>("msecs_interval", 1000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-    };
-  };
-
-private:
-  Brain *brain;
-};
-
-class SelfLocate1M : public SyncActionNode {
-public:
-  SelfLocate1M(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
-
-  NodeStatus tick() override;
-
-  static PortsList providedPorts() {
-    return {
-        InputPort<double>("msecs_interval", 1000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-        InputPort<double>("max_dist", 2.0, "marker 距离机器人的距离小于此值时, 才进行校准. (距离小测距更准)"),
-        InputPort<double>("max_drift", 1.0, "校准后的位置与原位置距离应小于此值, 否则认为校准失败"),
-        InputPort<bool>("validate", true, "校准后, 用其它的 marker 进行验证, 要求小于 locator 的 max residual"),
-    };
-  };
-
-private:
-  Brain *brain;
-};
-
-class SelfLocate2X : public SyncActionNode {
-public:
-  SelfLocate2X(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
-
-  NodeStatus tick() override;
-
-  static PortsList providedPorts() {
-    return {
-        InputPort<double>("msecs_interval", 1000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-        InputPort<double>("max_dist", 2.0, "penalty point 距离机器人的距离小于此值时, 才进行校准. (距离小测距更准)"),
-        InputPort<double>("max_drift", 1.0, "校准后的位置与原位置距离应小于此值, 否则认为校准失败"),
-        InputPort<bool>("validate", true, "校准后, 用其它的 marker 进行验证, 要求小于 locator 的 max residual"),
-    };
-  };
-
-private:
-  Brain *brain;
-};
-
-class SelfLocate2T : public SyncActionNode {
-public:
-  SelfLocate2T(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
-
-  NodeStatus tick() override;
-
-  static PortsList providedPorts() {
-    return {
-        InputPort<double>("msecs_interval", 1000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-        InputPort<double>("max_dist", 2.0, "两个 TCross 距离机器人的距离小于此值时, 才进行校准. (距离小测距更准)"),
-        InputPort<double>("max_drift", 1.0, "校准后的位置与原位置距离应小于此值, 否则认为校准失败"),
-        InputPort<bool>("validate", true, "校准后, 用其它的 marker 进行验证, 要求小于 locator 的 max residual"),
-    };
-  };
-
-private:
-  Brain *brain;
-};
-
-class SelfLocateLT : public SyncActionNode {
-public:
-  SelfLocateLT(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
-
-  NodeStatus tick() override;
-
-  static PortsList providedPorts() {
-    return {
-        InputPort<double>("msecs_interval", 1000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-        InputPort<double>("max_dist", 2.0, "penalty point 距离机器人的距离小于此值时, 才进行校准. (距离小测距更准)"),
-        InputPort<double>("max_drift", 1.0, "校准后的位置与原位置距离应小于此值, 否则认为校准失败"),
-        InputPort<bool>("validate", true, "校准后, 用其它的 marker 进行验证, 要求小于 locator 的 max residual"),
-    };
-  };
-
-private:
-  Brain *brain;
-};
-
-class SelfLocatePT : public SyncActionNode {
-public:
-  SelfLocatePT(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
-
-  NodeStatus tick() override;
-
-  static PortsList providedPorts() {
-    return {
-        InputPort<double>("msecs_interval", 1000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-        InputPort<double>("max_dist", 2.0, "penalty point 距离机器人的距离小于此值时, 才进行校准. (距离小测距更准)"),
-        InputPort<double>("max_drift", 1.0, "校准后的位置与原位置距离应小于此值, 否则认为校准失败"),
-        InputPort<bool>("validate", true, "校准后, 用其它的 marker 进行验证, 要求小于 locator 的 max residual"),
-    };
-  };
-
-private:
-  Brain *brain;
-};
-
-class SelfLocateBorder : public SyncActionNode {
-public:
-  SelfLocateBorder(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
-
-  NodeStatus tick() override;
-
-  static PortsList providedPorts() {
-    return {
-        InputPort<double>("msecs_interval", 1000, "防止过于频繁地校准, 如果上一次校准距离现在小于这个时间, 则不重新校准."),
-        InputPort<double>("max_dist", 2.0, "border 距离机器人的距离小于此值时, 才进行校准. (距离小测距更准)"),
-        InputPort<double>("max_drift", 1.0, "校准后的位置与原位置距离应小于此值, 否则认为校准失败"),
-        InputPort<bool>("validate", true, "校准后, 用其它的 marker 进行验证, 要求小于 locator 的 max residual"),
     };
   };
 

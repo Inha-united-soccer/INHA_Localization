@@ -94,9 +94,6 @@ Brain::Brain() : rclcpp::Node("brain_node") {
   declare_parameter<double>("obstacle_avoidance.kick_ao_safe_dist", 1.0);
   declare_parameter<bool>("obstacle_avoidance.kick_ao_use_shoot", false);
 
-  declare_parameter<int>("locator.min_marker_count", 5);
-  declare_parameter<double>("locator.max_residual", 0.3);
-
   declare_parameter<bool>("enable_com", false);
 
   declare_parameter<bool>("rerunLog.enable_tcp", false);
@@ -126,33 +123,20 @@ Brain::Brain() : rclcpp::Node("brain_node") {
 
   declare_parameter<int>("locator.num_particles", 150);
   declare_parameter<double>("locator.init_field_margin", 1.0);
-  declare_parameter<bool>("locator.init_own_half_only", true);
-  declare_parameter<double>("locator.pf_sensor_noise", 1.0);
-  declare_parameter<double>("locator.pf_alpha_1", 0.1);
-  declare_parameter<double>("locator.pf_alpha_2", 0.05);
-  declare_parameter<double>("locator.pf_alpha_3", 0.05);
-  declare_parameter<double>("locator.pf_alpha_4", 0.01);
-  declare_parameter<double>("locator.pf_alpha_slow", 0.05);
-  declare_parameter<double>("locator.pf_alpha_fast", 0.5);
-  declare_parameter<double>("locator.pf_inv_obs_var_x", 1.4);
-  declare_parameter<double>("locator.pf_inv_obs_var_y", 4.0);
-  declare_parameter<double>("locator.pf_unmatched_penalty_conf_thr", 0.6);
-  declare_parameter<double>("locator.pf_zeromotion_trans_thresh", 0.001);
-  declare_parameter<double>("locator.pf_zeromotion_rot_thresh", 0.002);
-  declare_parameter<bool>("locator.pf_resample_when_stopped", false);
-
-  declare_parameter<double>("locator.pf_cluster_dist_thr", 0.3);
-  declare_parameter<double>("locator.pf_cluster_theta_thr", 20.0);
-  declare_parameter<double>("locator.pf_smooth_alpha", 0.4);
-
-  declare_parameter<double>("locator.kld_err", 0.05);
-  declare_parameter<double>("locator.kld_z", 2.33); // 99%
-  declare_parameter<int>("locator.min_particles", 50);
-  declare_parameter<int>("locator.max_particles", 500);
-  declare_parameter<double>("locator.pf_resolution_x", 0.2);
-  declare_parameter<double>("locator.pf_resolution_y", 0.2);
-  declare_parameter<double>("locator.pf_resolution_theta", 10.0);
+  declare_parameter<double>("locator.alpha_1", 0.1);
+  declare_parameter<double>("locator.alpha_2", 0.05);
+  declare_parameter<double>("locator.alpha_3", 0.05);
+  declare_parameter<double>("locator.alpha_4", 0.01);
+  declare_parameter<double>("locator.smooth_alpha", 0.4);
+  declare_parameter<double>("locator.inv_norm_var", 1.4);
+  declare_parameter<double>("locator.inv_perp_var", 4.0);
+  declare_parameter<double>("locator.likelihood_weight", 0.4);
+  declare_parameter<double>("locator.unmatched_penalty_conf_thr", 0.6);
   declare_parameter<double>("locator.ess_threshold", 0.4);
+  declare_parameter<double>("locator.cluster_dist_thr", 0.3);
+  declare_parameter<double>("locator.cluster_theta_thr", 20.0);
+  declare_parameter<double>("locator.cluster_min_weight", 0.3);
+  declare_parameter<double>("locator.orientation_gating_thr")
 }
 
 Brain::~Brain() {}
@@ -169,12 +153,11 @@ void Brain::init() {
   client = std::make_shared<RobotClient>(this);
   communication = std::make_shared<BrainCommunication>(this);
 
-  locator->init(config->fieldDimensions, config->pfMinMarkerCnt, config->pfMaxResidual, 2.0, config->rerunLogEnableTCP || config->rerunLogEnableFile);
-  locator->setPFParams(config->pfNumParticles, config->pfInitFieldMargin, config->pfInitOwnHalfOnly, config->pfSensorNoise,
-                       {config->pfAlpha1, config->pfAlpha2, config->pfAlpha3, config->pfAlpha4}, config->pfAlphaSlow, config->pfAlphaFast,
-                       config->pfInjectionRatio, config->pfZeroMotionTransThresh, config->pfZeroMotionRotThresh, config->pfResampleWhenStopped,
-                       config->pfClusterDistThr, config->pfClusterThetaThr, config->pfSmoothAlpha, config->pfInvObsVarX, config->pfInvObsVarY,
-                       config->pfLikelihoodWeight, config->pfUnmatchedPenaltyConfThr, config->essThreshold, config->pfInjectionDist, config->pfInjectionAngle);
+  locator->init(config->fieldDimensions, config->rerunLogEnableTCP || config->rerunLogEnableFile);
+
+  locator->setParams(config->numParticles, config->initMargin, config->alpha1, config->alpha2, config->alpha3, config->alpha4, config->smoothAlpha,
+                     config->invNormVar, config->invPerpVar, config->likelihoodWeight, config->unmatchedPenaltyConfThr, config->essThreshold,
+                     config->clusterDistThr, config->clusterThetaThr, config->clusterMinWeight, config->orientationGatingThr);
 
   locator->setLog(&log->log_tcp);
 
@@ -248,9 +231,6 @@ void Brain::loadConfig() {
   get_parameter("obstacle_avoidance.safe_distance", config->safeDistance);
   get_parameter("obstacle_avoidance.avoid_secs", config->avoidSecs);
 
-  get_parameter("locator.min_marker_count", config->pfMinMarkerCnt);
-  get_parameter("locator.max_residual", config->pfMaxResidual);
-
   get_parameter("enable_com", config->enableCom);
 
   // get_parameter("rerunLog.enable", config->rerunLogEnable);
@@ -284,48 +264,22 @@ void Brain::loadConfig() {
     exit(1);
   }
 
-  get_parameter("locator.num_particles", config->pfNumParticles);
-  get_parameter("locator.init_field_margin", config->pfInitFieldMargin);
-  get_parameter("locator.init_own_half_only", config->pfInitOwnHalfOnly);
-  get_parameter("locator.pf_sensor_noise", config->pfSensorNoise);
-  get_parameter("locator.pf_alpha_1", config->pfAlpha1);
-  get_parameter("locator.pf_alpha_2", config->pfAlpha2);
-  get_parameter("locator.pf_alpha_3", config->pfAlpha3);
-  get_parameter("locator.pf_alpha_4", config->pfAlpha4);
-  get_parameter("locator.pf_alpha_slow", config->pfAlphaSlow);
-  get_parameter("locator.pf_alpha_fast", config->pfAlphaFast);
-  get_parameter("locator.pf_injection_ratio", config->pfInjectionRatio);
-  get_parameter("locator.pf_injection_dist", config->pfInjectionDist);
-  get_parameter("locator.pf_injection_angle", config->pfInjectionAngle);
-  get_parameter("locator.pf_inv_obs_var_x", config->pfInvObsVarX);
-  get_parameter("locator.pf_inv_obs_var_y", config->pfInvObsVarY);
-  get_parameter("locator.pf_likelihood_weight", config->pfLikelihoodWeight);
-  get_parameter("locator.pf_unmatched_penalty_conf_thr", config->pfUnmatchedPenaltyConfThr);
-
-  get_parameter("locator.pf_zeromotion_trans_thresh", config->pfZeroMotionTransThresh);
-  get_parameter("locator.pf_zeromotion_rot_thresh", config->pfZeroMotionRotThresh);
-  get_parameter("locator.pf_resample_when_stopped", config->pfResampleWhenStopped);
-
-  get_parameter("locator.pf_cluster_dist_thr", config->pfClusterDistThr);
-  double clusterThetaDeg;
-  get_parameter("locator.pf_cluster_theta_thr", clusterThetaDeg);
-  config->pfClusterThetaThr = deg2rad(clusterThetaDeg);
-
-  get_parameter("locator.pf_cluster_min_weight", config->pfClusterMinWeight);
-  get_parameter("locator.pf_cluster_min_size", config->pfClusterMinSize);
-  get_parameter("locator.pf_hysteresis_factor", config->pfHysteresisFactor);
-  get_parameter("locator.pf_cluster_ratio_limit", config->pfClusterRatioLimit);
-
-  get_parameter("locator.pf_weight_decay_r0", config->pfWeightDecayR0);
-  get_parameter("locator.pf_weight_decay_r1", config->pfWeightDecayR1);
-  get_parameter("locator.pf_weight_decay_gamma", config->pfWeightDecayGamma);
-
-  get_parameter("locator.pf_enable_orientation_gating", config->pfEnableOrientationGating);
-  get_parameter("locator.pf_orientation_gating_thr", config->pfOrientationGatingThr);
-
-  get_parameter("locator.pf_smooth_alpha", config->pfSmoothAlpha);
+  get_parameter("locator.num_particles", config->numParticles);
+  get_parameter("locator.init_field_margin", config->initFieldMargin);
+  get_parameter("locator.alpha_1", config->alpha1);
+  get_parameter("locator.alpha_2", config->alpha2);
+  get_parameter("locator.alpha_3", config->alpha3);
+  get_parameter("locator.alpha_4", config->alpha4);
+  get_parameter("locator.smooth_alpha", config->smoothAlpha);
+  get_parameter("locator.inv_norm_var", config->invNormVar);
+  get_parameter("locator.inv_perp_var", config->invPerpVar);
+  get_parameter("locator.likelihood_weight", config->likelihoodWeight);
+  get_parameter("locator.unmatched_penalty_conf_thr", config->unmatchedPenaltyConfThr);
   get_parameter("locator.ess_threshold", config->essThreshold);
-
+  get_parameter("locator.cluster_dist_thr", config->clusterDistThr);
+  get_parameter("locator.cluster_theta_thr", config->clusterThetaThr);
+  get_parameter("locator.cluster_min_weight", config->clusterMinWeight);
+  get_parameter("locator.orientation_gating_thr", config->orientationGatingThr);
   // else
   YAML::Node vConfig = YAML::LoadFile(visionConfigPath);
   if (filesystem::exists(visionConfigLocalPath)) {
@@ -1495,7 +1449,7 @@ void Brain::odometerCallback(const booster_interface::msg::Odometer &msg) {
   transform.transform.rotation.z = q.z();
   transform.transform.rotation.w = q.w();
 
-  locator->predictPF(data->robotPoseToOdom);
+  locator->predict(data->robotPoseToOdom);
   locator->logParticles(this->get_clock()->now().seconds());
 
   // /localized_pose publisher
@@ -2033,9 +1987,9 @@ void Brain::detectProcessMarkings(const vector<GameObject> &markingObjs) {
   }
 
   // MCL Correction
-  if (locator->getIsPFInitialized()) {
-    locator->correctPF(markers_pf);
-    auto est = locator->getEstimatePF();
+  if (locator->getIsInitialized()) {
+    locator->correct(markers_pf);
+    auto est = locator->getEstimate();
     // Soft update / Hard update strategy
     // For now, we trust the filter completely
     calibrateOdom(est.x, est.y, est.theta);

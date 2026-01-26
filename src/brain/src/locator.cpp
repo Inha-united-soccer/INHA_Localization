@@ -12,7 +12,6 @@
 #define REGISTER_LOCATOR_BUILDER(Name)                                                                                                                         \
   factory.registerBuilder<Name>(#Name, [brain](const string &name, const NodeConfig &config) { return make_unique<Name>(name, config, brain); });
 
-// Helper for random number generation
 std::mt19937 &getRandomEngine() {
   static std::random_device rd;
   static std::mt19937 gen(rd());
@@ -29,15 +28,22 @@ double uniformRandom(double min, double max) {
   return min + (max - min) * U01(getRandomEngine());
 }
 
-void RegisterLocatorNodes(BT::BehaviorTreeFactory &factory, Brain *brain) {
-  REGISTER_LOCATOR_BUILDER(SelfLocate);
-  REGISTER_LOCATOR_BUILDER(SelfLocateEnterField);
-  REGISTER_LOCATOR_BUILDER(SelfLocate1M);
-  REGISTER_LOCATOR_BUILDER(SelfLocateBorder);
-  REGISTER_LOCATOR_BUILDER(SelfLocate2T);
-  REGISTER_LOCATOR_BUILDER(SelfLocateLT);
-  REGISTER_LOCATOR_BUILDER(SelfLocatePT);
-  REGISTER_LOCATOR_BUILDER(SelfLocate2X);
+constexpr double BIG = 1e12;
+
+void RegisterLocatorNodes(BT::BehaviorTreeFactory &factory, Brain *brain) { REGISTER_LOCATOR_BUILDER(SelfLocateEnterField); }
+
+void Locator::init(FieldDimensions fd, bool enableLogParam, string logIPParam) {
+  fieldDimensions = fd;
+  calcFieldMarkers(fd);
+  enableLog = enableLogParam;
+  logIP = logIPParam;
+  // if (enableLog) {
+  // logger = &log;
+  // auto connectError = log.connect(logIP);
+  // if (connectError.is_err()) prtErr(format("Rerun log connect Error: %s", connectError.description.c_str()));
+  // auto saveError = log.save("/home/booster/log.rrd");
+  // if (saveError.is_err()) prtErr(format("Rerun log save Error: %s", saveError.description.c_str()));
+  // }
 }
 
 void Locator::calcFieldMarkers(FieldDimensions fd) {
@@ -82,300 +88,95 @@ void Locator::calcFieldMarkers(FieldDimensions fd) {
   fieldMarkers.push_back(FieldMarker{'L', -fd.length / 2, fd.width / 2, 0.0});
   fieldMarkers.push_back(FieldMarker{'L', -fd.length / 2, -fd.width / 2, 0.0});
 
-  // Update mapByType cache
   mapByType.clear();
   for (auto &m : fieldMarkers) {
     mapByType[m.type].push_back(m);
   }
 }
 
-void Locator::setPFParams(int numParticles, double initMargin, bool ownHalf, double sensorNoise, std::vector<double> alphas, double alphaSlow, double alphaFast,
-                          double injectionRatio, double zeroMotionTransThresh, double zeroMotionRotThresh, bool resampleWhenStopped, double clusterDistThr,
-                          double clusterThetaThr, double smoothAlpha, double invObsVarX, double invObsVarY, double likelihoodWeight,
-                          double unmatchedPenaltyConfThr, double pfEssThreshold, double injectionDist, double injectionAngle, double clusterMinWeight,
-                          int clusterMinSize, double hysteresisFactor, double clusterRatioLimit, double weightDecayR0, double weightDecayR1,
-                          double weightDecayGamma, bool enableOrientationGating, double orientationGatingThr) {
-  this->pfNumParticles = numParticles;
-  this->pfInitFieldMargin = initMargin;
-  this->pfInitOwnHalfOnly = ownHalf;
-  this->pfSensorNoiseR = sensorNoise;
-  this->pfAlpha1 = alphas[0];
-  this->pfAlpha2 = alphas[1];
-  this->pfAlpha3 = alphas[2];
-  this->pfAlpha4 = alphas[3];
-  this->alpha_slow = alphaSlow;
-  this->alpha_fast = alphaFast;
-  this->pfInjectionRatio = injectionRatio;
-  this->pfZeroMotionTransThresh = zeroMotionTransThresh;
-  this->pfZeroMotionRotThresh = zeroMotionRotThresh;
-  this->pfResampleWhenStopped = resampleWhenStopped;
-  this->pfClusterDistThr = clusterDistThr;
-  this->pfClusterThetaThr = clusterThetaThr;
-  this->pfSmoothAlpha = smoothAlpha;
-
-  this->invPfObsVarX = invObsVarX;
-  this->invPfObsVarY = invObsVarY;
-  this->pfLikelihoodWeight = likelihoodWeight;
-  this->pfUnmatchedPenaltyConfThr = unmatchedPenaltyConfThr;
-  this->pfEssThreshold = pfEssThreshold;
-  this->pfInjectionDist = injectionDist;
-  this->pfInjectionAngle = injectionAngle;
-  this->pfClusterMinWeight = clusterMinWeight;
-  this->pfClusterMinSize = clusterMinSize;
-  this->pfHysteresisFactor = hysteresisFactor;
-  this->pfClusterRatioLimit = clusterRatioLimit;
-
-  this->pfWeightDecayR0 = weightDecayR0;
-  this->pfWeightDecayR1 = weightDecayR1;
-  this->pfWeightDecayGamma = weightDecayGamma;
-  if (weightDecayR1 > weightDecayR0) {
-    this->pfWeightDecayBeta = std::log(1.0 / weightDecayGamma) / (weightDecayR1 - weightDecayR0);
-  } else {
-    this->pfWeightDecayBeta = 0.0;
-  }
-
-  this->pfEnableOrientationGating = enableOrientationGating;
-  this->pfOrientationGatingThr = orientationGatingThr;
+void Locator::setParams(int numParticles, double initMargin, std::vector<double> alphas, double smoothAlpha, double invNormVar, double invPerpVar,
+                        double likelihoodWeight, double unmatchedPenaltyConfThr, double essThreshold, double clusterDistThr, double clusterThetaThr,
+                        double clusterMinWeight, double orientationGatingThr) {
+  this->numParticles = numParticles;
+  this->initFieldMargin = initMargin;
+  this->alpha1 = alphas[0];
+  this->alpha2 = alphas[1];
+  this->alpha3 = alphas[2];
+  this->alpha4 = alphas[3];
+  this->smoothAlpha = smoothAlpha;
+  this->invNormVar = invNormVar;
+  this->invPerpVar = invPerpVar;
+  this->likelihoodWeight = likelihoodWeight;
+  this->unmatchedPenaltyConfThr = unmatchedPenaltyConfThr;
+  this->essThreshold = essThreshold;
+  this->clusterDistThr = clusterDistThr;
+  this->clusterThetaThr = clusterThetaThr;
+  this->clusterMinWeight = clusterMinWeight;
+  this->orientationGatingThr = orientationGatingThr;
 }
 
-void Locator::clusterParticles() {
-  // DBSCAN-like clustering
-  // 1. Reset IDs
-  for (auto &p : pfParticles)
-    p.id = -1;
-
-  int clusterId = 0;
-  std::vector<ParticleCluster> clusters;
-
-  // OPTIMIZATION: Weight Gating
-  // Sort particles by weight descending
-  std::vector<int> sortedIndices(pfParticles.size());
-  std::iota(sortedIndices.begin(), sortedIndices.end(), 0);
-  std::sort(sortedIndices.begin(), sortedIndices.end(), [&](int a, int b) { return pfParticles[a].weight > pfParticles[b].weight; });
-
-  // Select top active particles until ratio limit is reached
-  std::vector<int> activeIndices;
-  double accumWeight = 0.0;
-  for (int idx : sortedIndices) {
-    activeIndices.push_back(idx);
-    accumWeight += pfParticles[idx].weight;
-    if (accumWeight >= pfClusterRatioLimit) break;
-  }
-
-  // Only cluster efficient subset
-  for (int i : activeIndices) {
-    if (pfParticles[i].id != -1) continue; // Already visited
-
-    // Find neighbors - search only within active subset for efficiency?
-    // User asked to "gate the particles", implying we ignore the rest.
-    std::vector<int> neighbors;
-    for (int j : activeIndices) {
-      double dDist = sqrt(pow(pfParticles[i].x - pfParticles[j].x, 2) + pow(pfParticles[i].y - pfParticles[j].y, 2));
-      double dTheta = fabs(toPInPI(pfParticles[i].theta - pfParticles[j].theta));
-
-      if (dDist < pfClusterDistThr && dTheta < pfClusterThetaThr) { neighbors.push_back(j); }
-    }
-
-    // Identify core point (simplification: if it has neighbors, it starts a cluster)
-    // For true DBSCAN we need minPts, but here we just group everything connected.
-    // Let's use a simpler "density peak" approach or just group connected components.
-    // Given the task, let's just group connected components.
-
-    if (neighbors.empty()) continue; // Should at least include itself if it's a particle... wait, i is in neighbors.
-
-    pfParticles[i].id = clusterId;
-    ParticleCluster currentCluster;
-    currentCluster.indices.push_back(i);
-
-    // Expand cluster
-    std::vector<int> seedSet = neighbors;
-    for (size_t k = 0; k < seedSet.size(); ++k) {
-      int currIdx = seedSet[k];
-      if (pfParticles[currIdx].id == -1) {
-        pfParticles[currIdx].id = clusterId;
-        currentCluster.indices.push_back(currIdx);
-
-        // Optional: Expand further (transitive closure) - standard DBSCAN does this.
-        // For performance, let's do a limited expansion or just single-level if strictly density peak.
-        // But "connected components" is better for capturing the whole blob.
-        // Let's do full expansion.
-        // Let's do full expansion (but only within activeIndices to keep O(N^2) small)
-        for (int m : activeIndices) {
-          if (pfParticles[m].id != -1) continue;
-          double dDist2 = sqrt(pow(pfParticles[currIdx].x - pfParticles[m].x, 2) + pow(pfParticles[currIdx].y - pfParticles[m].y, 2));
-          double dTheta2 = fabs(toPInPI(pfParticles[currIdx].theta - pfParticles[m].theta));
-          if (dDist2 < pfClusterDistThr && dTheta2 < pfClusterThetaThr) {
-            pfParticles[m].id = clusterId;
-            currentCluster.indices.push_back(m);
-            seedSet.push_back(m); // Add to search queue
-          }
-        }
-      } else if (pfParticles[currIdx].id == -1) { // Logic error in standard DBSCAN check?
-                                                  // If undefined, label it. If defined as NOISE (not used here), label it.
-                                                  // modifying seedSet while iterating is safe with index access? Yes, std::vector
-      }
-    }
-
-    // Compute Cluster stats
-    double wSum = 0;
-    double xSum = 0;
-    double ySum = 0;
-    double sinSum = 0;
-    double cosSum = 0;
-
-    for (int idx : currentCluster.indices) {
-      double w = pfParticles[idx].weight;
-      wSum += w;
-      xSum += w * pfParticles[idx].x;
-      ySum += w * pfParticles[idx].y;
-      sinSum += w * sin(pfParticles[idx].theta);
-      cosSum += w * cos(pfParticles[idx].theta);
-    }
-
-    // FILTERING: Ignore small or weak clusters
-    if (wSum > pfClusterMinWeight && currentCluster.indices.size() >= pfClusterMinSize) {
-      currentCluster.weightSum = wSum;
-      currentCluster.meanPose.x = xSum / wSum;
-      currentCluster.meanPose.y = ySum / wSum;
-      currentCluster.meanPose.theta = atan2(sinSum, cosSum);
-      clusters.push_back(currentCluster);
-      clusterId++;
-    }
-  }
-
-  // If no clusters found (shouldn't happen if particles exist), fallback
-  if (clusters.empty()) return;
-
-  // Find best cluster
-  // Hysteresis Logic
-  // 1. Identify "Active" cluster (closest to smoothedPose)
-  ParticleCluster *activeCluster = nullptr;
-  double minDist = std::numeric_limits<double>::infinity();
-
-  // Also track global best
-  ParticleCluster *globalBest = nullptr;
-  double maxWeight = -1.0;
-
-  for (auto &c : clusters) {
-    if (c.weightSum > maxWeight) {
-      maxWeight = c.weightSum;
-      globalBest = &c;
-    }
-
-    if (hasSmoothedPose) {
-      double d = sqrt(pow(c.meanPose.x - smoothedPose.x, 2) + pow(c.meanPose.y - smoothedPose.y, 2));
-      if (d < 0.5) { // arbitrary proximity threshold to be considered "active".
-        if (d < minDist) {
-          minDist = d;
-          activeCluster = &c;
-        }
-      }
-    }
-  }
-
-  // 2. Select between Active and Global Best
-  if (activeCluster && globalBest) {
-    if (globalBest == activeCluster) {
-      bestPose = activeCluster->meanPose;
-    } else {
-      // Switch only if global best is significantly better
-      if (globalBest->weightSum > activeCluster->weightSum * pfHysteresisFactor) {
-        bestPose = globalBest->meanPose;
-      } else {
-        bestPose = activeCluster->meanPose;
-      }
-    }
-  } else if (globalBest) {
-    bestPose = globalBest->meanPose;
-  } else {
-    // No valid clusters (should correspond to filters dropping everything)
-    return;
-  }
-}
-
-void Locator::init(FieldDimensions fd, int minMarkerCntParam, double residualToleranceParam, double muOffestParam, bool enableLogParam, string logIPParam) {
-  fieldDimensions = fd;
-  calcFieldMarkers(fd);
-  enableLog = enableLogParam;
-  logIP = logIPParam;
-  // if (enableLog) {
-  // logger = &log;
-  // auto connectError = log.connect(logIP);
-  // if (connectError.is_err()) prtErr(format("Rerun log connect Error: %s", connectError.description.c_str()));
-  // auto saveError = log.save("/home/booster/log.rrd");
-  // if (saveError.is_err()) prtErr(format("Rerun log save Error: %s", saveError.description.c_str()));
-  // }
-}
-
-void Locator::globalInitPF(Pose2D currentOdom) {
-  double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
+void Locator::globalInit(Pose2D currentOdom) {
+  double xMin = -fieldDimensions.length / 2.0 - initFieldMargin;
   double xMax = 0;
-  double yMin = fieldDimensions.width / 2.0 - pfInitFieldMargin;
-  double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
-  double thetaMin = -M_PI;
-  double thetaMax = M_PI;
+  double yMin = fieldDimensions.width / 2.0 - initFieldMargin;
+  double yMax = fieldDimensions.width / 2.0 + initFieldMargin;
 
-  isPFInitialized = true;
-  lastPFOdomPose = currentOdom;
+  isInitialized = true;
+  lastOdomPose = currentOdom;
 
-  int num = pfNumParticles;
-  pfParticles.resize(num);
+  int num = numParticles;
+  particles.resize(num);
   double thetaSpread = deg2rad(30.0);
 
   for (int i = 0; i < num / 2; i++) {
-    pfParticles[i].x = uniformRandom(xMin, xMax);
-    pfParticles[i].y = uniformRandom(yMin, yMax);
+    particles[i].x = uniformRandom(xMin, xMax);
+    particles[i].y = uniformRandom(yMin, yMax);
     double thetaCenter = -M_PI / 2.0;
-
-    pfParticles[i].theta = toPInPI(thetaCenter + uniformRandom(-thetaSpread, thetaSpread));
-    pfParticles[i].weight = 1.0 / num;
+    particles[i].theta = toPInPI(thetaCenter + uniformRandom(-thetaSpread, thetaSpread));
+    particles[i].weight = 1.0 / num;
   }
   for (int i = num / 2; i < num; i++) {
-    pfParticles[i].x = uniformRandom(xMin, xMax);
-    pfParticles[i].y = -uniformRandom(yMin, yMax);
+    particles[i].x = uniformRandom(xMin, xMax);
+    particles[i].y = -uniformRandom(yMin, yMax);
     double thetaCenter = M_PI / 2.0;
-    pfParticles[i].theta = toPInPI(thetaCenter + uniformRandom(-thetaSpread, thetaSpread));
-    pfParticles[i].weight = 1.0 / num;
+    particles[i].theta = toPInPI(thetaCenter + uniformRandom(-thetaSpread, thetaSpread));
+    particles[i].weight = 1.0 / num;
   }
 }
 
-void Locator::predictPF(Pose2D currentOdomPose) {
-
-  prtWarn(format("[PF][predictPF] enter | initialized=%d | pfN=%zu | odom=(%.2f %.2f %.2f)", isPFInitialized, pfParticles.size(), currentOdomPose.x,
-                 currentOdomPose.y, rad2deg(currentOdomPose.theta)));
-
-  if (!isPFInitialized) {
-    prtWarn("[PF][predictPF] NOT initialized -> only update lastPFOdomPose");
-    lastPFOdomPose = currentOdomPose; // (0,0,0)에서 점프 방지
-    globalInitPF(currentOdomPose);
+void Locator::predict(Pose2D currentOdomPose) {
+  if (!isInitialized) {
+    lastOdomPose = currentOdomPose;
+    // BT에 섞으면 selfLocateEnterField에서만 globalInit()
+    globalInit(currentOdomPose);
     return;
   }
 
-  double dx = currentOdomPose.x - lastPFOdomPose.x;
-  double dy = currentOdomPose.y - lastPFOdomPose.y;
-  double dtheta = toPInPI(currentOdomPose.theta - lastPFOdomPose.theta);
+  double dx = currentOdomPose.x - lastOdomPose.x;
+  double dy = currentOdomPose.y - lastOdomPose.y;
+  double dtheta = toPInPI(currentOdomPose.theta - lastOdomPose.theta);
 
-  double transDist = sqrt(dx * dx + dy * dy);
-  double rotDist = fabs(dtheta);
+  // 변화가 너--무 작으면 조기종료
+  if (fabs(dx) < 0.0001 && fabs(dy) < 0.0001 && fabs(dtheta) < 0.0087) {
+    lastOdomPose = currentOdomPose;
+    return;
+  }
 
-  double c = cos(lastPFOdomPose.theta);
-  double s = sin(lastPFOdomPose.theta);
+  double c = cos(lastOdomPose.theta);
+  double s = sin(lastOdomPose.theta);
+
   double trans_x = c * dx + s * dy; // 로봇좌표계로
   double trans_y = -s * dx + c * dy;
+
   double rot1 = atan2(trans_y, trans_x);
   double trans = sqrt(trans_x * trans_x + trans_y * trans_y);
   double rot2 = (dtheta - rot1);
-
-  double alpha1 = pfAlpha1;
-  double alpha2 = pfAlpha2;
-  double alpha3 = pfAlpha3;
-  double alpha4 = pfAlpha4;
 
   double rot1_dev = alpha1 * fabs(rot1) + alpha2 * trans;
   double trans_dev = alpha3 * trans + alpha4 * (fabs(rot1) + fabs(rot2));
   double rot2_dev = alpha1 * fabs(rot2) + alpha2 * trans;
 
-  for (auto &p : pfParticles) {
+  for (auto &p : particles) {
     double n_rot1 = rot1 + (gaussianRandom(0, rot1_dev));
     double n_trans = trans + (gaussianRandom(0, trans_dev));
     double n_rot2 = rot2 + (gaussianRandom(0, rot2_dev));
@@ -385,140 +186,133 @@ void Locator::predictPF(Pose2D currentOdomPose) {
     p.theta = toPInPI(p.theta + n_rot1 + n_rot2);
   }
 
-  lastPFOdomPose = currentOdomPose;
+  lastOdomPose = currentOdomPose;
 }
 
-void Locator::correctPF(const vector<FieldMarker> markers) {
-  prtWarn(format("[PF][correctPF] enter | initialized=%d | pfN=%zu | markersN=%zu", isPFInitialized, pfParticles.size(), markers.size()));
-  if (!isPFInitialized || markers.empty()) {
-    prtWarn("[PF][correctPF] not initialized");
-    return;
-  }
+void Locator::correct(const vector<FieldMarker> markers) {
 
   double totalWeight = 0;
-  double maxWeight = -1.0;
 
-  double invVarX = this->invPfObsVarX;
-  double invVarY = this->invPfObsVarY;
+  const double xMinConstraint = -fieldDimensions.length / 2.0 - initFieldMargin;
+  const double xMaxConstraint = fieldDimensions.length / 2.0 + initFieldMargin;
+  const double yMinConstraint = -fieldDimensions.width / 2.0 - initFieldMargin;
+  const double yMaxConstraint = fieldDimensions.width / 2.0 + initFieldMargin;
+  const int nMap = fieldMarkers.size();
+  const int nObs = markers.size();
+  obsInField.reserve(nObs);
 
-  // 1. Weight Update
-  for (auto &p : pfParticles) {
-    double xMinConstraint = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
-    double xMaxConstraint = fieldDimensions.length / 2.0 + pfInitFieldMargin;
-    double yMinConstraint = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
-    double yMaxConstraint = fieldDimensions.width / 2.0 + pfInitFieldMargin;
+  for (auto &p : particles) {
+    double px = p.x;
+    double py = p.y;
+    double pt = p.theta;
+    double c = cos(pt);
+    double s = sin(pt);
 
-    if (p.x < xMinConstraint || p.x > xMaxConstraint || p.y < yMinConstraint || p.y > yMaxConstraint) {
+    if (px < xMinConstraint || px > xMaxConstraint || py < yMinConstraint || py > yMaxConstraint) {
       p.weight = 0.0;
     } else {
-      // Orientation Gating
-      if (hasSmoothedPose && pfEnableOrientationGating) {
-        if (fabs(toPInPI(p.theta - smoothedPose.theta)) > pfOrientationGatingThr) {
-          p.weight = 0.0;
-          continue;
-        }
+      if (hasPose) {
+        // orientation이 현재 final pose보다 +-120도 초과 시 skip
+        if (fabs(toPInPI(pt - pose.theta)) > orientationGatingThr) continue;
       }
 
-      Pose2D pose{p.x, p.y, p.theta};
-
-      double c = cos(pose.theta);
-      double s = sin(pose.theta);
-
-      int nObs = markers.size();
-      int nMap = fieldMarkers.size();
-      int nCols = nMap + nObs;
-
-      obsInFieldBuf.clear();
-      obsInFieldBuf.reserve(nObs);
-
+      // detected landmark를 field 좌표계로 변환
+      obsInField.clear();
       for (const auto &m_r : markers) {
-        double ox = c * m_r.x - s * m_r.y + pose.x;
-        double oy = s * m_r.x + c * m_r.y + pose.y;
-        obsInFieldBuf.push_back(FieldMarker{m_r.type, ox, oy, m_r.confidence});
+        double ox = c * m_r.x - s * m_r.y + px;
+        double oy = s * m_r.x + c * m_r.y + py;
+        obsInField.push_back(FieldMarker{m_r.type, ox, oy, m_r.confidence});
       }
 
-      flatCostMatrix.assign(nObs * nCols, baseRejectCost);
-
-      auto getMahalanobisCost = [&](double dx_f, double dy_f) {
-        double dx_r = c * dx_f + s * dy_f;
-        double dy_r = -s * dx_f + c * dy_f;
-        return (dx_r * dx_r) * invVarX + (dy_r * dy_r) * invVarY;
-      };
+      // assignment problem
+      if (flatCostMatrix.size() < nObs * nMap) flatCostMatrix.resize(nObs * nMap);
+      std::fill_n(flatCostMatrix.begin(), nObs * nMap, BIG);
 
       for (int i = 0; i < nObs; ++i) {
-        char obsType = obsInFieldBuf[i].type;
+        char obsType = obsInField[i].type;
         for (int j = 0; j < nMap; ++j) {
           // Type Mismatch Check
-          if (fieldMarkers[j].type != obsType) {
-            flatCostMatrix[i * nCols + j] = std::numeric_limits<double>::max();
-            continue;
-          }
+          if (fieldMarkers[j].type != obsType) continue;
 
-          double dx = obsInFieldBuf[i].x - fieldMarkers[j].x;
-          double dy = obsInFieldBuf[i].y - fieldMarkers[j].y;
-          flatCostMatrix[i * nCols + j] = getMahalanobisCost(dx, dy);
+          double dx = obsInField[i].x - fieldMarkers[j].x;
+          double dy = obsInField[i].y - fieldMarkers[j].y;
+          flatCostMatrix[i * nMap + j] = dx * dx + dy * dy;
         }
       }
+      assignment.clear();
+      assignment.reserve(max(nObs, nMap));
+      hungarian.Solve(flatCostMatrix, nObs, nMap, assignment);
 
-      vector<int> assignment;
-      hungarian.Solve(flatCostMatrix, nObs, nCols, assignment);
+      double calCost(int i, int j) {
+        // marker_f, marker_r : observed markers on respective frame
+        // map_marker : true info
 
+        // d = marker_f - map_marker
+        // R = [[(map_marker - robotPositionOnField) / norm(map_marker - robotPositionOnField)]^T,[(map_marker - ropotPositionOnField) / norm(map_marker -
+        // ropotPositionOnField)]^-1^T]
+        // sigma = [[k1 * (map_marker - robotPositionOnField)^2, 0],
+        //          [0, k2 * (map_marker - robotPositionOnField)^2]]
+        // D^2 = d^T * R * sigma^-1 * R^T * d
+
+        double dx = obsInField[i].x - fieldMarkers[j].x;
+        double dy = obsInField[i].y - fieldMarkers[j].y;
+
+        double vx = fieldMarkers[j].x - px;
+        double vy = fieldMarkers[j].y - py;
+        double distSq = max(1e-6, vx * vx + vy * vy);
+        double invDist = 1 / sqrt(distSq);
+        double ux = vx * invDist;
+        double uy = vy * invDist;
+
+        double invDist2 = 1 / distSq;
+        double dn = ux * dx + uy * dy;
+        double dp = -uy * dx + ux * dy;
+        double k1 = invNormVar;
+        double k2 = invPerpVar;
+        double D2 = dn * dn * k1 * invDist2 + dp * dp * k2 * invDist2;
+        return D2;
+      }
+      // likelihood update
       double sumCost = 0.0;
       for (int i = 0; i < nObs; ++i) {
         int j = assignment[i];
-        if (j < 0) continue; // Should not happen
-
-        // Distance Dependent Weight Decay
-        double r = sqrt(pow(obsInFieldBuf[i].x - pose.x, 2) + pow(obsInFieldBuf[i].y - pose.y, 2));
-        // Wait, obsInFieldBuf is in Field Frame. Distance to pose (robot in field frame) is correct to get range.
-        // Actually simpler: markers passed to correctPF are in ROBOT FRAME.
-        // But here we are iterating over `obsInFieldBuf` or `markers`?
-        // Loop is over `nObs` which matches `obsInFieldBuf` and `markers`.
-        // `markers` is const vector<FieldMarker> passed to correctPF. Matches i.
-        double r_robot = sqrt(pow(markers[i].x, 2) + pow(markers[i].y, 2));
-
-        double distWeight = 1.0;
-        if (r_robot > pfWeightDecayR0) { distWeight = exp(-pfWeightDecayBeta * (r_robot - pfWeightDecayR0)); }
-
-        if (j < nMap) {
-          sumCost += distWeight * flatCostMatrix[i * nCols + j];
-        } else {
-          if (obsInFieldBuf[i].confidence > this->pfUnmatchedPenaltyConfThr) { sumCost += distWeight * flatCostMatrix[i * nCols + j]; }
-        }
+        sumCost += calCost(i, j);
       }
+
+      // 마커 개수로 normalize해야하나?
       double logLikelihood = -0.5 * sumCost;
 
-      double likelihood = exp(logLikelihood * this->pfLikelihoodWeight);
+      double likelihood = exp(logLikelihood * likelihoodWeight);
       p.weight *= likelihood;
     }
     totalWeight += p.weight;
-    if (p.weight > maxWeight) maxWeight = p.weight;
   }
-
   // Normalization
   if (totalWeight < 1e-10) {
-    for (auto &p : pfParticles)
-      p.weight = 1.0 / pfParticles.size();
+    for (auto &p : particles)
+      p.weight = 1.0 / particles.size();
     totalWeight = 1.0;
   } else {
-    for (auto &p : pfParticles)
+    for (auto &p : particles)
       p.weight /= totalWeight;
   }
 
+  // ess calculation
   double sqSum = 0;
-  for (auto &p : pfParticles)
+  for (auto &p : particles)
     sqSum += p.weight * p.weight;
   double ess = 1.0 / (sqSum + 1e-9);
 
-  if (ess < pfParticles.size() * pfEssThreshold) {
+  // ESS resampling
+  if (ess < particles.size() * essThreshold) {
     vector<Particle> newParticles;
-    newParticles.reserve(pfNumParticles);
+    newParticles.reserve(numParticles);
 
-    // CDF Construction for Multinomial Sampling
-    std::vector<double> cdf(pfParticles.size());
-    cdf[0] = pfParticles[0].weight;
-    for (size_t i = 1; i < pfParticles.size(); ++i) {
-      cdf[i] = cdf[i - 1] + pfParticles[i].weight;
+    // CDF construction
+    cdf.resize(particles.size());
+    cdf[0] = particles[0].weight;
+    for (size_t i = 1; i < particles.size(); ++i) {
+      cdf[i] = cdf[i - 1] + particles[i].weight;
     }
     // Ensure last is 1.0 (handle float errors)
     cdf.back() = 1.0;
@@ -528,80 +322,96 @@ void Locator::correctPF(const vector<FieldMarker> markers) {
       double r = uniformRandom(0.0, 1.0);
       auto it = std::upper_bound(cdf.begin(), cdf.end(), r);
       int idx = std::distance(cdf.begin(), it);
-      if (idx >= pfParticles.size()) idx = pfParticles.size() - 1;
-      return pfParticles[idx];
+      if (idx >= particles.size()) idx = particles.size() - 1;
+      return particles[idx];
     };
 
-    double xMin = -fieldDimensions.length / 2.0 - pfInitFieldMargin;
-    double xMax = fieldDimensions.length / 2.0 + pfInitFieldMargin;
-    double yMin = -fieldDimensions.width / 2.0 - pfInitFieldMargin;
-    double yMax = fieldDimensions.width / 2.0 + pfInitFieldMargin;
-    double tMin = smoothedPose.theta - M_PI / 4;
-    double tMax = smoothedPose.theta + M_PI / 4;
-
-    for (int i = 0; i < pfNumParticles; ++i) {
+    // Resample
+    for (int i = 0; i < numParticles; ++i) {
       Particle pNew;
-
-      // Random Injection
-      if (uniformRandom(0.0, 1.0) < pfInjectionRatio) {
-        // Constrained Injection
-        double iDist = pfInjectionDist;
-        double iAngle = pfInjectionAngle;
-
-        // Clamp to field boundaries
-        double rx = uniformRandom(-iDist, iDist);
-        double ry = uniformRandom(-iDist, iDist);
-        double rth = uniformRandom(-iAngle, iAngle);
-
-        pNew.x = std::clamp(smoothedPose.x + rx, xMin, xMax);
-        pNew.y = std::clamp(smoothedPose.y + ry, yMin, yMax);
-        pNew.theta = toPInPI(smoothedPose.theta + rth);
-        pNew.weight = 1.0;
-      } else {
-        // Resample from CDF
-        pNew = sampleCDF();
-        pNew.weight = 1.0;
-      }
-
+      pNew = sampleCDF();
+      pNew.weight = 1.0 / numParticles;
       newParticles.push_back(pNew);
     }
-
-    // Normalize weights for new set
-    double w_uni = 1.0 / newParticles.size();
-    for (auto &p : newParticles)
-      p.weight = w_uni;
-
-    pfParticles = newParticles;
-    prtWarn(format("[PF] Resample: Size=%zu", pfParticles.size()));
+    particles = newParticles;
   }
 }
 
-Pose2D Locator::getEstimatePF() {
-  if (pfParticles.empty()) return {0, 0, 0};
-
-  // 1. Cluster Particles
+Pose2D Locator::getEstimate() {
+  if (!hasPose) {
+    // 첫빠따에는 그냥 weight 가장 큰 애 찾음
+    hasPose = true;
+    return findBestWeight();
+  }
+  // 이전 포즈가 존재해서 일루 들어감
   clusterParticles();
 
-  // 2. Use Best Cluster Mean
-  Pose2D raw = bestPose; // bestPose is updated by clusterParticles
+  // 클러스터링해서 찾은 current best pose와 이전 포즈를 스무딩
+  Pose2D raw = bestPose;
 
-  // 3. EMA Smoothing
-  if (!hasSmoothedPose) {
-    smoothedPose = raw;
-    hasSmoothedPose = true;
-  } else {
-    // fast alpha for responsiveness (configured in yaml)
-    double alpha = pfSmoothAlpha;
+  // EMA Smoothing
 
-    smoothedPose.x = alpha * raw.x + (1.0 - alpha) * smoothedPose.x;
-    smoothedPose.y = alpha * raw.y + (1.0 - alpha) * smoothedPose.y;
+  double alpha = smoothAlpha;
 
-    // Angular EMA with wrap-around safety
-    double dTheta = toPInPI(raw.theta - smoothedPose.theta);
-    smoothedPose.theta = toPInPI(smoothedPose.theta + alpha * dTheta);
+  pose.x = alpha * raw.x + (1.0 - alpha) * pose.x;
+  pose.y = alpha * raw.y + (1.0 - alpha) * pose.y;
+
+  double dTheta = toPInPI(raw.theta - pose.theta);
+  pose.theta = toPInPI(pose.theta + alpha * dTheta);
+
+  return pose;
+}
+
+Pose2D Locator::findBestWeight() {
+  int bestIdx = -1;
+  double maxWeight = 0.0;
+  for (int i = 0; i < particles.size(); ++i) {
+    if (particles[i].weight > maxWeight) {
+      bestIdx = i;
+      maxWeight = particles[i].weight;
+    }
   }
+  return {particles[bestIdx].x, particles[bestIdx].y, particles[bestIdx].theta};
+}
 
-  return smoothedPose;
+void Locator::clusterParticles() {
+  // 기존 pose를 reference pose로 선정
+  Pose2D ref_p = pose;
+  // 주변 particle 찾기
+  vector<int> inlierIdx;
+  double wSum = 0.0;
+  for (int i = 0; i < particles.size(); ++i) {
+    double d_xy_sq = (particles[i].x - ref_p.x) * (particles[i].x - ref_p.x) + (particles[i].y - ref_p.y) * (particles[i].y - ref_p.y);
+    double d_th_ab = abs(toPInPI(particles[i].theta - ref_p.theta));
+    if (d_xy_sq <= clusterDistThr && d_th_ab <= clusterThetaThr) {
+      inlierIdx.push_back(i);
+      wSum += particles[i].weight;
+    }
+  }
+  // 클러스터 형성이 충분치 않으면
+  if (wSum < clusterMinWeight) {
+    // weight 가장 높은 애를 포즈로 업데이트
+    bestPose = findBestWeight();
+    return;
+  } else { // 클러스터링이 됐다면 가중평균을 bestpose로 업데이트
+    double xSum = 0;
+    double ySum = 0;
+    double sinSum = 0;
+    double cosSum = 0;
+    for (auto &i : inlierIdx) {
+      double w = particles[i].weight;
+      xSum += w * particles[i].x;
+      ySum += w * particles[i].y;
+      sinSum += w * sin(particles[i].theta);
+      cosSum += w * cos(particles[i].theta);
+    }
+    bestPose.x = xSum / wSum;
+    bestPose.y = ySum / wSum;
+    double sinAvg = sinSum / wSum;
+    double cosAvg = cosSum / wSum;
+    bestPose.theta = atan2(sinAvg, cosAvg);
+  }
+  return;
 }
 
 void Locator::setLog(rerun::RecordingStream *stream) { logger = stream; }
@@ -609,23 +419,21 @@ void Locator::setLog(rerun::RecordingStream *stream) { logger = stream; }
 void Locator::logParticles(double time_sec) {
   if (!enableLog || logger == nullptr) return;
 
-  const size_t pfN = pfParticles.size();
-
-  prtWarn(format("[PF][logParticles] pfN=%zu enableLog=%d", pfParticles.size(), enableLog ? 1 : 0));
+  const size_t N = particles.size();
 
   std::vector<rerun::Position2D> origins;
   std::vector<rerun::Vector2D> vectors;
   std::vector<rerun::Color> colors;
   std::vector<float> radii;
 
-  origins.reserve(pfN);
-  vectors.reserve(pfN);
-  colors.reserve(pfN);
-  radii.reserve(pfN);
+  origins.reserve(N);
+  vectors.reserve(N);
+  colors.reserve(N);
+  radii.reserve(N);
 
   const float len = 0.1f;
 
-  for (const auto &p : pfParticles) {
+  for (const auto &p : particles) {
     float x0 = static_cast<float>(p.x);
     float y0 = static_cast<float>(p.y);
     float dx = len * std::cos(p.theta);
@@ -647,43 +455,8 @@ void Locator::logParticles(double time_sec) {
   logger->log("field/particles", rerun::Arrows2D::from_vectors(vectors).with_origins(origins).with_colors(colors).with_radii(radii).with_draw_order(19.0));
 }
 
-FieldMarker Locator::markerToFieldFrame(FieldMarker marker_r, Pose2D pose_r2f) {
-  auto [x, y, theta] = pose_r2f;
-
-  Eigen::Matrix3d transform;
-  transform << cos(theta), -sin(theta), x, sin(theta), cos(theta), y, 0, 0, 1;
-
-  Eigen::Vector3d point_r;
-  point_r << marker_r.x, marker_r.y, 1.0;
-
-  auto point_f = transform * point_r;
-
-  return FieldMarker{marker_r.type, point_f.x(), point_f.y(), marker_r.confidence};
-}
-
-double Locator::minDist(FieldMarker marker) {
-  double minDist = std::numeric_limits<double>::infinity();
-  double dist;
-  for (int i = 0; i < fieldMarkers.size(); i++) {
-    auto target = fieldMarkers[i];
-    if (target.type != marker.type) { continue; }
-    dist = sqrt(pow((target.x - marker.x), 2.0) + pow((target.y - marker.y), 2.0));
-    if (dist < minDist) minDist = dist;
-  }
-  return minDist;
-}
-
 // 나중에 모드를 설정해서 initial particle 영역을 달리해야댐
 NodeStatus SelfLocateEnterField::tick() {
-  if (!brain->locator->getIsPFInitialized()) { brain->locator->globalInitPF(brain->data->robotPoseToOdom); }
+  if (!brain->locator->getIsInitialized()) { brain->locator->globalInit(brain->data->robotPoseToOdom); }
   return NodeStatus::SUCCESS;
 }
-
-NodeStatus SelfLocate::tick() { return NodeStatus::SUCCESS; }
-
-NodeStatus SelfLocate1M::tick() { return NodeStatus::SUCCESS; }
-NodeStatus SelfLocate2X::tick() { return NodeStatus::SUCCESS; }
-NodeStatus SelfLocate2T::tick() { return NodeStatus::SUCCESS; }
-NodeStatus SelfLocateLT::tick() { return NodeStatus::SUCCESS; }
-NodeStatus SelfLocatePT::tick() { return NodeStatus::SUCCESS; }
-NodeStatus SelfLocateBorder::tick() { return NodeStatus::SUCCESS; }

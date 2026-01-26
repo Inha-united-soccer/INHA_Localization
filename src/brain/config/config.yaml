@@ -54,53 +54,22 @@ brain_node:
       chase_ao_safe_dist: 3.5 
 
     locator:
-      pf_smooth_alpha: 0.7
-      
-      pf_inv_obs_var_x: 3.0
-      pf_inv_obs_var_y: 4.0
-
-      pf_likelihood_weight: 0.2
-
-      pf_unmatched_penalty_conf_thr: 0.2
-
-      pf_alpha_1: 0.001 #rot -> rot
-      pf_alpha_2: 0.001 #trans -> rot
-      pf_alpha_3: 0.001 # trans-> trans
-      pf_alpha_4: 0.001 #rot->trans
-
-      init_field_margin: 0.5
-
-      ess_threshold: 0.2
       num_particles: 100
-
-
-      pf_cluster_dist_thr: 0.2
-      pf_cluster_theta_thr: 0.18
-      pf_cluster_min_weight: 0.05
-      pf_cluster_min_size: 10
-      pf_hysteresis_factor: 10.0
-      pf_cluster_ratio_limit: 0.8
-      
-      pf_weight_decay_r0: 3.0
-      pf_weight_decay_r1: 6.0
-      pf_weight_decay_gamma: 1.0
-      
-      pf_enable_orientation_gating: true
-      pf_orientation_gating_thr: 2.0 # ~114 degrees
-
-      pf_injection_ratio: 0.0
-      pf_injection_dist: 5.0
-      pf_injection_angle: 0.785 # 45 degrees
-
-      pf_sensor_noise: 1.5
-      min_marker_count: 5
-      max_residual: 0.35 
-      init_own_half_only: true
-      pf_alpha_slow: 0.05
-      pf_alpha_fast: 0.5
-      pf_resample_when_stopped: true
-      pf_zeromotion_trans_thresh: 0.05 #m
-      pf_zeromotion_rot_thresh: 0.05 # 라디안
+      init_field_margin: 0.5
+      alpha_1: 0.001 #rot -> rot
+      alpha_2: 0.001 #trans -> rot
+      alpha_3: 0.001 # trans-> trans
+      alpha_4: 0.001 #rot->trans
+      smooth_alpha: 0.8
+      inv_norm_var: 3.0
+      inv_perp_var: 4.0
+      likelihood_weight: 0.2
+      unmatched_penalty_conf_thr: 0.2
+      ess_threshold: 0.2
+      cluster_dist_thr: 0.2
+      cluster_theta_thr: 0.18
+      cluster_min_weight: 0.05
+      orientation_gating_thr: 2.0 # ~114 degrees
 
 
     enable_com: false 

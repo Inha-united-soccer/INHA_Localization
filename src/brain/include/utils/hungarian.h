@@ -12,11 +12,11 @@ public:
   HungarianAlgorithm() {}
   ~HungarianAlgorithm() {}
 
-  void Solve(const vector<double> &DistMatrix, int nRows, int nCols, vector<int> &Assignment) {
-    if (nRows == 0 || nCols == 0) return;
+  void Solve(const vector<double> &DistMatrix, int nRows, int nMap, vector<int> &Assignment) {
+    if (nRows == 0 || nMap == 0) return;
 
     Assignment.assign(nRows, -1);
-    int n = max(nRows, nCols);
+    int n = max(nRows, nMap);
 
     int sizeNeeded = n + 1;
     if (u.size() < sizeNeeded) {
@@ -28,11 +28,11 @@ public:
       used.resize(sizeNeeded);
     }
 
-    return SolveInternal(DistMatrix, n, nRows, nCols, Assignment);
+    return SolveInternal(DistMatrix, n, nRows, nMap, Assignment);
   }
 
 private:
-  void SolveInternal(const vector<double> &DistMatrix, int n, int nRows, int nCols, vector<int> &Assignment) {
+  void SolveInternal(const vector<double> &DistMatrix, int n, int nRows, int nMap, vector<int> &Assignment) {
     // double cost = 0.0;
 
     fill(u.begin(), u.end(), 0.0);
@@ -57,7 +57,7 @@ private:
           if (!used[j]) {
             double curCost = 0.0;
             // Map 1-based i0, j to 0-based index and check bounds
-            if ((i0 - 1) < nRows && (j - 1) < nCols) { curCost = DistMatrix[(i0 - 1) * nCols + (j - 1)]; }
+            if ((i0 - 1) < nRows && (j - 1) < nMap) { curCost = DistMatrix[(i0 - 1) * nMap + (j - 1)]; }
 
             double cur = curCost - u[i0] - v[j];
             if (cur < minv[j]) {
@@ -93,10 +93,7 @@ private:
       if (p[j] != 0) {
         int row = p[j] - 1;
         int col = j - 1;
-        if (row < nRows && col < nCols) {
-          Assignment[row] = col;
-          // cost += DistMatrix[row * nCols + col];
-        }
+        if (row < nRows && col < nMap) { Assignment[row] = col; }
       }
     }
 

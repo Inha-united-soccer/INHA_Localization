@@ -83,59 +83,21 @@ public:
   double nearBallSpeedLimit = 0.2;
   double nearBallRange = 3.0;
 
-  int pfMinMarkerCnt = 5;
-  double pfMaxResidual = 0.3;
-
-  int pfNumParticles = 150;
-  double pfInitFieldMargin = 1.0;
-  bool pfInitOwnHalfOnly = true;
-  double pfSensorNoise = 1.0;
-  double pfAlpha1 = 0.1;
-  double pfAlpha2 = 0.05;
-  double pfAlpha3 = 0.05;
-  double pfAlpha4 = 0.01;
-  double pfAlphaSlow = 0.05;
-  double pfAlphaFast = 0.5;
-  double pfInjectionRatio = 0.2;
-  double pfInjectionDist = 3.0;
-  double pfInjectionAngle = M_PI / 4.0;
-  double pfInvObsVarX = 1.4;
-  double pfInvObsVarY = 4.0;
-  double pfLikelihoodWeight = 0.3;
-  double pfUnmatchedPenaltyConfThr = 0.6;
-
-  double pfZeroMotionTransThresh = 0.001;
-  double pfZeroMotionRotThresh = 0.002;
-  bool pfResampleWhenStopped = false;
-
-  double pfClusterDistThr = 0.3;
-  double pfClusterThetaThr = 0.35; // ~20 deg
-  double pfClusterMinWeight = 0.05;
-  int pfClusterMinSize = 3;
-  double pfHysteresisFactor = 1.2;
-  double pfClusterRatioLimit = 0.9;
-
-  // Weight Decay Parameters
-  double pfWeightDecayR0 = 2.5;
-  double pfWeightDecayR1 = 4.0;
-  double pfWeightDecayGamma = 0.1;
-
-  // Orientation Gating
-  bool pfEnableOrientationGating = true;
-  double pfOrientationGatingThr = 1.6;
-
-  double pfSmoothAlpha = 0.4;
-
-  // KLD Sampling Parameters
-  double kldErr = 0.05;
-  double kldZ = 2.33; // 99% confidence (1-delta)
-  int minParticles = 50;
-  int maxParticles = 500;
-  // Resolution for binning
-  double pfResolutionX = 0.2;             // 20cm
-  double pfResolutionY = 0.2;             // 20cm
-  double pfResolutionTheta = deg2rad(10); // 10 deg
-
+  int numParticles = 150;
+  double initFieldMargin = 1.0;
+  double alpha1 = 0.1;
+  double alpha2 = 0.05;
+  double alpha3 = 0.05;
+  double alpha4 = 0.01;
+  double invNormVar = 1.4;
+  double invPerpVar = 4.0;
+  double likelihoodWeight = 0.3;
+  double unmatchedPenaltyConfThr = 0.6;
+  double clusterDistThr = 0.3;
+  double clusterThetaThr = 0.35; // ~20 deg
+  double clusterMinWeight = 0.05;
+  double orientationGatingThr = 1.6;
+  double smoothAlpha = 0.4;
   double essThreshold = 0.4;
 
   bool soundEnable = false;
