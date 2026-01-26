@@ -116,8 +116,8 @@ void Locator::setParams(int numParticles, double initMargin, std::vector<double>
 }
 
 void Locator::globalInit(Pose2D currentOdom) {
-  prtWarn(format("[PF][globalInit] | initialized=%d | pfN=%zu | odom=(%.2f %.2f %.2f)", isInitialized, particles.size(), currentOdom.x,
-                 currentOdom.y, rad2deg(currentOdom.theta)));
+  prtWarn(format("[PF][globalInit] | initialized=%d | pfN=%zu | odom=(%.2f %.2f %.2f)", isInitialized, particles.size(), currentOdom.x, currentOdom.y,
+                 rad2deg(currentOdom.theta)));
   double xMin = -fieldDimensions.length / 2.0 - initFieldMargin;
   double xMax = 0;
   double yMin = fieldDimensions.width / 2.0 - initFieldMargin;
@@ -260,17 +260,17 @@ void Locator::correct(const vector<FieldMarker> markers) {
 
         double vx = fieldMarkers[j].x - px;
         double vy = fieldMarkers[j].y - py;
-        double distSq = max(1e-6, vx * vx + vy * vy);
-        double invDist = 1 / sqrt(distSq);
-        double ux = vx * invDist;
-        double uy = vy * invDist;
+        double dist = max(1e-6, sqrt(vx * vx + vy * vy));
+        double ux = vx / dist;
+        double uy = vy / dist;
 
-        double invDist2 = 1 / distSq;
         double dn = ux * dx + uy * dy;
         double dp = -uy * dx + ux * dy;
-        double k1 = invNormVar;
-        double k2 = invPerpVar;
-        double D2 = dn * dn * k1 * invDist2 + dp * dp * k2 * invDist2;
+
+        double sigma_n = 0.2 * dist + 0.1; // 1m:0.3, 2m:0.5, 3m:0.7
+        double sigma_p = 0.1 * dist + 0.1;
+
+        double D2 = dn * dn / (sigma_n * sigma_n) + dp * dp / (sigma_p * sigma_p);
         return D2;
       };
       // likelihood update
