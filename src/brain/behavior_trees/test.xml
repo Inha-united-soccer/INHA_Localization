@@ -1,7 +1,7 @@
 <root BTCPP_format="4">
     <!-- 포함될 BT 파일들 -->
-    <include path="./subtrees/subtree_locate.xml" />
-    <include path="./subtrees/subtree_cam_find_and_track_ball.xml" />
+    <!-- <include path="./subtrees/subtree_locate.xml" /> -->
+    <!-- <include path="./subtrees/subtree_cam_find_and_track_ball.xml" /> -->
 
     <!-- 시작 -->
     <BehaviorTree ID="MainTree">

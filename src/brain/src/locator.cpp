@@ -242,8 +242,7 @@ void Locator::correct(const vector<FieldMarker> markers) {
       assignment.clear();
       assignment.reserve(max(nObs, nMap));
       hungarian.Solve(flatCostMatrix, nObs, nMap, assignment);
-
-      double calCost(int i, int j) {
+      auto calCost = [&](int i, int j) -> double {
         // marker_f, marker_r : observed markers on respective frame
         // map_marker : true info
 
@@ -271,7 +270,7 @@ void Locator::correct(const vector<FieldMarker> markers) {
         double k2 = invPerpVar;
         double D2 = dn * dn * k1 * invDist2 + dp * dp * k2 * invDist2;
         return D2;
-      }
+      };
       // likelihood update
       double sumCost = 0.0;
       for (int i = 0; i < nObs; ++i) {
