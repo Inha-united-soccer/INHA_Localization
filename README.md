@@ -12,89 +12,78 @@
 </div>
 
 ---
-
 ## Problem Statement
 
-**Humanoid soccer localization is fundamentally ill-posed.**
+**Humanoid soccer localization is inherently ill-posed.**
 
-Unlike wheeled robots, humanoids experience:
-- Large odometry drift due to foot slippage and impacts
+Compared to wheeled robots, humanoids suffer from:
+- Severe odometry drift due to foot slippage and impacts
 - Highly ambiguous observations caused by **field symmetry**
-- Sparse and intermittent landmarks under occlusion and motion blur
+- Sparse and unreliable landmarks under occlusion and motion blur
 
-In RoboCup-style soccer fields, multiple robot poses can explain the same set of visual observations.
+In RoboCup-style fields, multiple poses can explain the same visual observations.
 A robust localization system must therefore:
 1. **Maintain multiple pose hypotheses**
 2. **Resolve symmetric ambiguities over time**
-3. **Remain stable under partial or unreliable observations**
+3. **Remain stable under partial or noisy measurements**
 
-The **INHA Localization** module is designed to explicitly address these challenges using a **probabilistic, multi-hypothesis framework**.
+**INHA Localization** addresses these challenges using a  
+**probabilistic, multi-hypothesis estimation framework**.
 
 ---
 
 ## Core Algorithm Overview
 
-INHA Localization adopts an **adaptive particle filter (SIR)** that fuses:
-- **Odometry-driven motion prediction**
-- **Vision-based field marker observations**
-- **Assignment-aware likelihood modeling**
-- **Temporal consistency through clustering and smoothing**
+INHA Localization employs an **adaptive particle filter (SIR)** that fuses:
+- Odometry-based motion prediction
+- Vision-based field marker observations
+- Assignment-aware likelihood evaluation
+- Temporal consistency mechanisms
 
-Rather than collapsing to a single pose prematurely, the system maintains and evaluates a diverse hypothesis set until sufficient evidence accumulates.
+Rather than collapsing prematurely, the system maintains multiple hypotheses
+until sufficient evidence supports convergence.
 
 ---
+
 ## Key Design Choices & Differentiators
 
 ### ▸ Assignment-Aware Measurement Modeling
 
-Visual observations of field markers (L, T, X, goal posts) are associated with the known field map using a **global one-to-one assignment formulation**.
+Detected field markers (L, T, X, goal posts) are associated with map landmarks
+using a **global one-to-one assignment** solved by the **Hungarian algorithm**.
 
-- Marker correspondence is solved via the **Hungarian algorithm**
-- Prevents duplicated assignment of multiple observations to a single landmark
-- Naturally handles partial and unordered observations
+- Prevents duplicated landmark assignments  
+- Naturally handles partial and unordered observations  
 
-Given an assignment, each particle evaluates measurement likelihood using a **distance-anisotropic Gaussian model**:
-- Errors are decomposed into **radial (normal)** and **tangential (perpendicular)** components
-- Measurement uncertainty scales with landmark distance
+Measurement likelihood is evaluated using a **distance-anisotropic Gaussian model**:
+- Residuals are decomposed into **radial** and **tangential** components  
+- Uncertainty scales with landmark distance  
 
-This formulation reflects the physical characteristics of vision-based localization:
-- Angular uncertainty dominates at long range
-- Radial consistency is more informative than lateral alignment
-
-As a result, likelihood evaluation remains **geometrically meaningful and robust** under cluttered or sparse observations.
+This yields robust, geometry-aware likelihood evaluation under sparse observations.
 
 ---
 
 ### ▸ Adaptive Hypothesis Management via ESS-Controlled Resampling
 
-To maintain a healthy hypothesis set, the filter continuously monitors **Effective Sample Size (ESS)**.
+The filter monitors **Effective Sample Size (ESS)** to detect weight degeneracy.
 
-- Resampling is triggered only when weight degeneracy is detected
-- Prevents premature collapse under symmetric ambiguity
-- Enables rapid concentration once observations become informative
-
-This adaptive strategy allows the system to **preserve multi-modal pose hypotheses** during global uncertainty, while still converging decisively when evidence accumulates.
+- Resampling is triggered only when necessary  
+- Preserves multi-modal hypotheses under symmetry  
+- Enables rapid convergence when observations become informative  
 
 ---
 
 ### ▸ Reference-Guided Pose Finalization with Temporal Gating
 
-Final pose estimation is formulated as a **temporal consistency problem**, rather than a spatial clustering task.
+Pose estimation is formulated as a **temporal consistency problem**.
 
-**Bootstrap phase**  
-When no prior pose exists, the system commits to the **single highest-weight particle** to establish an initial reference pose, avoiding unstable averaging under symmetry.
+- **Initialization**: select the highest-weight particle to avoid unstable averaging  
+- **Tracking**: apply position and orientation gating relative to the previous pose  
+- **Estimation**: compute a weighted mean if sufficient consensus exists,  
+  otherwise fall back to the maximum-weight hypothesis  
 
-**Tracking phase**  
-Once a reference pose is available:
-- Particles are filtered using **position and orientation gates** relative to the previous estimate
-- If the accumulated weight of inlier particles exceeds a minimum threshold, the pose is computed via **weighted mean aggregation**
-- Otherwise, the system falls back to the maximum-weight hypothesis
-
-The final pose is further stabilized using:
-- **Orientation gating** to reject inconsistent hypotheses
-- **Exponential moving average (EMA)** smoothing for temporal continuity
-
-This design enforces stability without assuming spatial density, enabling **robust symmetry resolution through time rather than instantaneous clustering**.
+The final pose is stabilized using **orientation gating** and **EMA smoothing**,
+enabling symmetry resolution through time rather than instantaneous clustering.
 
 ---
 ## Performance Evaluation
