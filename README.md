@@ -100,7 +100,7 @@ This design enforces stability without assuming spatial density, enabling **robu
 ## Performance Evaluation
 
 Localization accuracy was evaluated using **Absolute Pose Error (APE)** with  
-**SE(3) Umeyama alignment**.
+**SE(3) Umeyama alignment** in half court condition.
 
 <p align="center">
   <img src="images/localization_evo.png" width="360"/><br>
