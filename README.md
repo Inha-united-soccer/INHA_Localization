@@ -1,35 +1,55 @@
-# K1_Robocup Demo
-## introduction
-The Booster K1 Robocup official demo allows the robot to make autonomous decisions to kick the ball and complete the full Robocup match. It includes three programs: vision, brain, and game_controller.
+<div align="center">
 
--   vision
-    -   The Robocup vision recognition program, based on Yolo-v8, detects objects such as robots, soccer balls, and the field, and calculates their positions in the robot's coordinate system using geometric relationships.
--   brain
-    -   The Robocup decision-making program reads visual data and GameController game control data, integrates all available information, makes judgments, and controls the robot to perform corresponding actions, completing the match process.
--   game_controller
-    -   Reads the game control data packets broadcast by the referee machine on the local area network, converts them into ROS2 topic messages, and makes them available for the brain to use.
+# ⚽️ INHA Vision
+**Advanced Autonomous Agent for Humanoid Soccer**
 
-##  Install extra dependency
-sudo apt-get install ros-humble-backward-ros
+[![ROS2](https://img.shields.io/badge/ROS2-Humble-3490dc.svg?style=for-the-badge&logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
+[![C++](https://img.shields.io/badge/C++-17-00599C.svg?style=for-the-badge&logo=c%2B%2B&logoColor=white)](https://en.cppreference.com/w/cpp/17)
+[![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
-## Note
-This repo support jetpack 6.2. Adapted to the default TRT model in src/vision/config/vision.yaml.
+*robust Detection • real-time inference • 3D position estimation*
 
-vision.yaml for jetpack 6.2 machine
+---
+</div>
 
-    detection_model:
-	    model_path: ./src/vision/model/best_digua_second_10.3.engine
-	    confidence_threshold: 0.2
+## Mission & Vision
+**"To enable humanoid robots to perceive the game reliably, even while moving."**
 
-## Build and Run
 
-    #Build the programs
-    ./scripts/build.sh
-    
-    #Run on the actual robot
-    ./scripts/start.sh
+The **INHA Vision** is designed as a visual perception module to enable stable recognition even during movement. It reliably detects and tracks balls, robots, goalposts, and field markers(L, T, X) in dynamic environments with varying lighting conditions.
 
-## Documents
+---
 
-[Chinese Version](https://booster.feishu.cn/wiki/SoJCwyIpiiXrp0kgVnKc5rIrn3f)
-[English version](https://booster.feishu.cn/wiki/CQXowElA0iy2hhkmPJmcY0wwnHf?renamingWikiNode=false)
+## Key Features
+
+### **Robust Object Detection**
+We employ a YOLOv8-based detector optimized for embedded platforms.
+* Detection of ball, goalposts, robots, and field markers (L, T, X)
+* Trained on over 40,000 annotated images, including public datasets and in-house data
+
+
+### **Real-Time Inference**
+To meet strict real-time constraints on embedded humanoid platforms, the vision model is optimized using NVIDIA TensorRT.
+* Conversion of trained detection models to TensorRT engines for low-latency inference
+* Stable real-time performance on Jetson Orin NX under on-board computational constraints
+
+### **3D Pose Estimation in Robot Frame**
+Detected objects are converted from image space into metric 3D positions:
+* Intrinsic-based pixel-to-ray projection
+* Transformation into the base frame using IMU-compensated kinematic data
+
+---
+
+## System Architecture
+
+The detailed system architecture is illustrated in the figure below.
+<p align="center">
+  <img src="images/vision_pipeline.png" width="800"/>
+</p>
+
+---
+
+<div align="center">
+    <b>Built with by INHA United</b><br>
+    <i>Pushing the boundaries of Autonomous Soccer</i>
+</div>
