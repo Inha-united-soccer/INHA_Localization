@@ -123,20 +123,6 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with
 
 <img src="images/localization_architecture.png" width="600"/>
 
-
----
-
-## Summary
-
-**INHA Localization** prioritizes:
-- Robustness over premature certainty
-- Explicit handling of ambiguity
-- Stability under real humanoid motion
-
-By combining principled probabilistic modeling with domain-specific geometric insight,
-the system delivers reliable localization suitable for high-level decision-making
-in dynamic humanoid soccer environments.
-
 ---
 
 <div align="center">
