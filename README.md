@@ -100,27 +100,33 @@ This design enforces stability without assuming spatial density, enabling **robu
 
 ## Performance Evaluation
 
-Localization accuracy was evaluated using **Absolute Pose Error (APE)** with **SE(3) Umeyama alignment**.
+Localization accuracy was evaluated using **Absolute Pose Error (APE)** with  
+**SE(3) Umeyama alignment**.
 
 <table>
 <tr>
-<td width="55%" valign="top">  
-<p align="center">
-  <img src="images/localization_evo.png" width="500"/><br> 
-</p>
+<td width="55%" valign="top" align="center">
+
+<img src="images/localization_evo.png" width="500"/><br>
+<em>APE over time under SE(3) Umeyama alignment.</em>
+
 </td>
 <td width="45%" valign="top">
-### Δ Translation Error (meters)
 
-| Metric | Value |
-|------|------|
-| Mean | **0.17 m** |
-| Median | 0.15 m |
-| RMSE | 0.19 m |
-| Max | 0.54 m |
+<b>Δ Translation Error (meters)</b>
+
+<table>
+<tr><th align="left">Metric</th><th align="right">Value</th></tr>
+<tr><td>Mean</td><td align="right"><b>0.17 m</b></td></tr>
+<tr><td>Median</td><td align="right">0.15 m</td></tr>
+<tr><td>RMSE</td><td align="right">0.19 m</td></tr>
+<tr><td>Max</td><td align="right">0.54 m</td></tr>
+</table>
+
 </td>
 </tr>
 </table>
+
 > Evaluation over **153,555 poses**,  
 > **203 m trajectory**, **455 s duration**
 
