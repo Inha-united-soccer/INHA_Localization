@@ -103,11 +103,11 @@ This design enforces stability without assuming spatial density, enabling **robu
 Localization accuracy was evaluated using **Absolute Pose Error (APE)** with  
 **SE(3) Umeyama alignment**.
 
-<table>
+<table cellspacing="0" cellpadding="0" border="0">
 <tr>
 <td width="55%" valign="top" align="center">
 
-<img src="images/localization_evo.png" width="500"/><br>
+<img src="images/localization_evo.png" width="380"/><br>
 <em>APE over time under SE(3) Umeyama alignment.</em>
 
 </td>
@@ -115,8 +115,7 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with
 
 <b>Δ Translation Error (meters)</b>
 
-<table>
-<tr><th align="left">Metric</th><th align="right">Value</th></tr>
+<table cellspacing="0" cellpadding="4" border="0">
 <tr><td>Mean</td><td align="right"><b>0.17 m</b></td></tr>
 <tr><td>Median</td><td align="right">0.15 m</td></tr>
 <tr><td>RMSE</td><td align="right">0.19 m</td></tr>
