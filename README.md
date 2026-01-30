@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📍 INHA Localization
+# :soccer: INHA Localization
 **Probabilistic Self-Localization for Humanoid Soccer**
 
 [![ROS2](https://img.shields.io/badge/ROS2-Humble-3490dc.svg?style=for-the-badge&logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
@@ -65,7 +65,6 @@ Measurement likelihood is evaluated using a
 This approach enables robust and geometry-aware likelihood evaluation,
 even when observations are sparse or partially ambiguous.
 
----
 
 ### Adaptive Hypothesis Management via ESS-Controlled Resampling
 
@@ -75,8 +74,6 @@ the **Effective Sample Size (ESS)**.
 - Resampling is performed only when weight degeneracy is detected  
 - Multi-modal hypotheses are preserved under symmetric uncertainty  
 - Efficient convergence is achieved once observations become informative  
-
----
 
 ### Reference-Guided Pose Finalization with Temporal Gating
 
