@@ -16,32 +16,33 @@
 
 **Humanoid soccer localization is inherently ill-posed.**
 
-Compared to wheeled robots, humanoids suffer from:
-- Severe odometry drift due to foot slippage and impacts
-- Highly ambiguous observations caused by **field symmetry**
-- Sparse and unreliable landmarks under occlusion and motion blur
+Compared to wheeled robots, humanoid platforms operate under more challenging conditions:
+- Significant odometry drift caused by foot slippage and impacts  
+- Highly ambiguous visual observations due to **field symmetry**  
+- Sparse and occasionally unreliable landmarks under occlusion and motion blur  
 
-In RoboCup-style fields, multiple poses can explain the same visual observations.
-A robust localization system must therefore:
+In RoboCup-style soccer fields, it is common for multiple robot poses to be
+consistent with the same set of visual observations.
+A reliable localization system should therefore be able to:
 1. **Maintain multiple pose hypotheses**
 2. **Resolve symmetric ambiguities over time**
 3. **Remain stable under partial or noisy measurements**
 
-**INHA Localization** addresses these challenges using a  
-**probabilistic, multi-hypothesis estimation framework**.
+The **INHA Localization** module is designed with these requirements in mind,
+and adopts a **probabilistic, multi-hypothesis estimation framework**.
 
 ---
 
 ## Core Algorithm Overview
 
-INHA Localization employs an **adaptive particle filter (SIR)** that fuses:
-- Odometry-based motion prediction
-- Vision-based field marker observations
-- Assignment-aware likelihood evaluation
-- Temporal consistency mechanisms
+INHA Localization is based on an **adaptive particle filter (SIR)** that integrates:
+- Odometry-based motion prediction  
+- Vision-based field marker observations  
+- Assignment-aware likelihood evaluation  
+- Temporal consistency mechanisms  
 
-Rather than collapsing prematurely, the system maintains multiple hypotheses
-until sufficient evidence supports convergence.
+Instead of converging to a single pose prematurely, the system maintains
+multiple hypotheses and gradually refines them as reliable evidence becomes available.
 
 ---
 
@@ -49,41 +50,48 @@ until sufficient evidence supports convergence.
 
 ### ▸ Assignment-Aware Measurement Modeling
 
-Detected field markers (L, T, X, goal posts) are associated with map landmarks
-using a **global one-to-one assignment** solved by the **Hungarian algorithm**.
+Detected field markers (L, T, X, goal posts) are associated with known map landmarks
+using a **global one-to-one assignment formulation**, solved via the
+**Hungarian algorithm**.
 
-- Prevents duplicated landmark assignments  
-- Naturally handles partial and unordered observations  
+- Prevents duplicated assignments to the same landmark  
+- Naturally supports partial and unordered observations  
 
-Measurement likelihood is evaluated using a **distance-anisotropic Gaussian model**:
+Measurement likelihood is evaluated using a
+**distance-anisotropic Gaussian error model**:
 - Residuals are decomposed into **radial** and **tangential** components  
-- Uncertainty scales with landmark distance  
+- Measurement uncertainty increases with landmark distance  
 
-This yields robust, geometry-aware likelihood evaluation under sparse observations.
+This approach enables robust and geometry-aware likelihood evaluation,
+even when observations are sparse or partially ambiguous.
 
 ---
 
 ### ▸ Adaptive Hypothesis Management via ESS-Controlled Resampling
 
-The filter monitors **Effective Sample Size (ESS)** to detect weight degeneracy.
+To maintain a well-conditioned particle set, the filter continuously monitors
+the **Effective Sample Size (ESS)**.
 
-- Resampling is triggered only when necessary  
-- Preserves multi-modal hypotheses under symmetry  
-- Enables rapid convergence when observations become informative  
+- Resampling is performed only when weight degeneracy is detected  
+- Multi-modal hypotheses are preserved under symmetric uncertainty  
+- Efficient convergence is achieved once observations become informative  
 
 ---
 
 ### ▸ Reference-Guided Pose Finalization with Temporal Gating
 
-Pose estimation is formulated as a **temporal consistency problem**.
+Final pose estimation is formulated as a **temporal consistency problem**.
 
-- **Initialization**: select the highest-weight particle to avoid unstable averaging  
-- **Tracking**: apply position and orientation gating relative to the previous pose  
-- **Estimation**: compute a weighted mean if sufficient consensus exists,  
-  otherwise fall back to the maximum-weight hypothesis  
+- **Initialization**: the highest-weight particle is selected to establish a
+  stable initial reference  
+- **Tracking**: particles are filtered using position and orientation gating
+  relative to the previous estimate  
+- **Estimation**: a weighted mean is computed when sufficient consensus exists;
+  otherwise, the system falls back to the maximum-weight hypothesis  
 
-The final pose is stabilized using **orientation gating** and **EMA smoothing**,
-enabling symmetry resolution through time rather than instantaneous clustering.
+The final pose is further stabilized using **orientation gating** and
+**exponential moving average (EMA) smoothing**, allowing symmetric ambiguities
+to be resolved gradually over time rather than instantaneously.
 
 ---
 ## Performance Evaluation
@@ -105,7 +113,7 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with
 | Max | 0.54 m |
 
 > Evaluation over **153,555 poses**,
-> **203 m trajectory**, **455 s duration**
+> **455 s duration**
 
 ---
 ## System Architecture
