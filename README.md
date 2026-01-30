@@ -43,8 +43,6 @@ INHA Localization adopts an **adaptive particle filter (SIR)** that fuses:
 Rather than collapsing to a single pose prematurely, the system maintains and evaluates a diverse hypothesis set until sufficient evidence accumulates.
 
 ---
-
-## Key Design Choices & Differentiators
 ## Key Design Choices & Differentiators
 
 ### ▸ Assignment-Aware Measurement Modeling
