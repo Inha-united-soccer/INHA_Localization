@@ -121,7 +121,7 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with
 ---
 ## System Architecture
 
-<img src="images/localization_architecture.png" width="400"/><br>
+<img src="images/localization_architecture.png" width="400"/>
 
 
 ---
