@@ -100,7 +100,7 @@ This design enforces stability without assuming spatial density, enabling **robu
 
 ## Performance Evaluation
 <p align="center">
-  <img src="images/localization_evo.png" width="600"/><br>
+  <img src="images/localization_evo.png" width="300"/><br>
   <em>Localization accuracy evaluated using APE with SE(3) Umeyama alignment.</em>
 </p>
 
