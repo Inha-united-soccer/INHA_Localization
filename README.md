@@ -117,7 +117,7 @@ This ensures:
 
 Localization accuracy was evaluated using **Absolute Pose Error (APE)** with **SE(3) Umeyama alignment**.
 
-### 📐 Translation Error (meters)
+### Δ Translation Error (meters)
 
 | Metric | Value |
 |------|------|
@@ -126,19 +126,8 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with **S
 | RMSE | **0.19 m** |
 | Max | 0.54 m |
 
-### 🔄 Rotation Error (degrees)
-
-| Metric | Value |
-|------|------|
-| Median | **9.21°** |
-| Mean | 47.4° |
-| RMSE | 85.7° |
-
 > Evaluation over **153,555 poses**,  
 > **203 m trajectory**, **455 s duration**
-
-Large rotation outliers correspond to intentional symmetry flips early in localization,
-which are resolved as more observations accumulate.
 
 ---
 
@@ -164,6 +153,6 @@ in dynamic humanoid soccer environments.
 ---
 
 <div align="center">
-    <b>Built with by INHA United</b><br>
+    <b>Built by INHA United</b><br>
     <i>Pushing the boundaries of Autonomous Soccer</i>
 </div>
