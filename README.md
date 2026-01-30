@@ -108,7 +108,6 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with
 <td width="55%" valign="top" align="center">
 
 <img src="images/localization_evo.png" width="380"/><br>
-<em>APE over time under SE(3) Umeyama alignment.</em>
 
 </td>
 <td width="45%" valign="top">
