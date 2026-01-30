@@ -48,7 +48,7 @@ multiple hypotheses and gradually refines them as reliable evidence becomes avai
 
 ## Key Design Choices & Differentiators
 
-### ▸ Assignment-Aware Measurement Modeling
+### Assignment-Aware Measurement Modeling
 
 Detected field markers (L, T, X, goal posts) are associated with known map landmarks
 using a **global one-to-one assignment formulation**, solved via the
@@ -67,7 +67,7 @@ even when observations are sparse or partially ambiguous.
 
 ---
 
-### ▸ Adaptive Hypothesis Management via ESS-Controlled Resampling
+### Adaptive Hypothesis Management via ESS-Controlled Resampling
 
 To maintain a well-conditioned particle set, the filter continuously monitors
 the **Effective Sample Size (ESS)**.
@@ -78,7 +78,7 @@ the **Effective Sample Size (ESS)**.
 
 ---
 
-### ▸ Reference-Guided Pose Finalization with Temporal Gating
+### Reference-Guided Pose Finalization with Temporal Gating
 
 Final pose estimation is formulated as a **temporal consistency problem**.
 
