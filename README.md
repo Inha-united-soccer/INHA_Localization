@@ -115,7 +115,7 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with
 | RMSE | 0.19 m |
 | Max | 0.54 m |
 
-> Evaluation over **153,555 poses**,  
+> Evaluation over **153,555 poses**,
 > **203 m trajectory**, **455 s duration**
 
 ---
