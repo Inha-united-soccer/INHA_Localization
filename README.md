@@ -104,9 +104,10 @@ Localization accuracy was evaluated using **Absolute Pose Error (APE)** with **S
 
 ### Δ Translation Error (meters)
 <p align="center">
-  <img src="images/localization_evo.png" style="max-width: 400px; width: 100%;"/>
-  <em>Localization accuracy evaluated using APE with SE(3) Umeyama alignment.</em>
+  <img src="images/localization_evo.png" width="550"/><br>
+  <em>Absolute Pose Error (APE) under SE(3) Umeyama alignment.</em>
 </p>
+
 | Metric | Value |
 |------|------|
 | Mean | **0.17 m** |
