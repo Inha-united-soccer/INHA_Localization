@@ -45,71 +45,58 @@ Rather than collapsing to a single pose prematurely, the system maintains and ev
 ---
 
 ## Key Design Choices & Differentiators
+## Key Design Choices & Differentiators
 
-### 1️⃣ Marker-Aware Data Association (Hungarian Assignment)
+### ▸ Assignment-Aware Measurement Modeling
 
-Visual observations of field markers (L, T, X, Goal posts) are associated with the known field map using a **global assignment formulation**.
+Visual observations of field markers (L, T, X, goal posts) are associated with the known field map using a **global one-to-one assignment formulation**.
 
-- One-to-one correspondence enforced via the **Hungarian algorithm**
+- Marker correspondence is solved via the **Hungarian algorithm**
 - Prevents duplicated assignment of multiple observations to a single landmark
-- Naturally handles partial observations
+- Naturally handles partial and unordered observations
 
-This design avoids brittle nearest-neighbor matching and stabilizes likelihood computation under clutter.
+Given an assignment, each particle evaluates measurement likelihood using a **distance-anisotropic Gaussian model**:
+- Errors are decomposed into **radial (normal)** and **tangential (perpendicular)** components
+- Measurement uncertainty scales with landmark distance
 
----
-
-### 2️⃣ Distance-Anisotropic Likelihood Model
-
-Each particle evaluates observation likelihood using an **anisotropic Gaussian error model**:
-
-- Errors decomposed into:
-  - **Normal (radial)** component
-  - **Perpendicular (tangential)** component
-- Variance scales with landmark distance
-
-This reflects the physical reality that:
+This formulation reflects the physical characteristics of vision-based localization:
 - Angular uncertainty dominates at long range
-- Lateral misalignment is less informative than radial consistency
+- Radial consistency is more informative than lateral alignment
 
-The result is a likelihood function that is both **geometry-aware** and **distance-robust**.
+As a result, likelihood evaluation remains **geometrically meaningful and robust** under cluttered or sparse observations.
 
 ---
 
-### 3️⃣ ESS-Guided Resampling with Degeneracy Control
+### ▸ Adaptive Hypothesis Management via ESS-Controlled Resampling
 
-To prevent particle impoverishment:
-- Effective Sample Size (ESS) is monitored every update
+To maintain a healthy hypothesis set, the filter continuously monitors **Effective Sample Size (ESS)**.
+
 - Resampling is triggered only when weight degeneracy is detected
+- Prevents premature collapse under symmetric ambiguity
+- Enables rapid concentration once observations become informative
 
-This allows the filter to:
-- Preserve multi-modal hypotheses when ambiguity exists
-- Aggressively concentrate when observations become informative
-
----
-
-### 4️⃣ Symmetry Resolution via Weight-Gated Clustering
-
-Instead of directly averaging all particles, pose extraction follows a **DBSCAN-like clustering strategy**:
-
-- Clustering performed around the previous pose estimate
-- Distance and orientation gates applied
-- Only clusters exceeding a minimum total weight are considered valid
-
-If no stable cluster forms, the system gracefully falls back to the highest-weight hypothesis.
-
-This mechanism enables **temporal symmetry breaking** without ad-hoc rules.
+This adaptive strategy allows the system to **preserve multi-modal pose hypotheses** during global uncertainty, while still converging decisively when evidence accumulates.
 
 ---
 
-### 5️⃣ Temporal Consistency with Orientation Gating & EMA Smoothing
+### ▸ Reference-Guided Pose Finalization with Temporal Gating
 
-To suppress sudden pose flips:
-- Orientation gating rejects hypotheses inconsistent with recent estimates
-- Final pose output is smoothed using an **exponential moving average (EMA)**
+Final pose estimation is formulated as a **temporal consistency problem**, rather than a spatial clustering task.
 
-This ensures:
-- Stable downstream control
-- Reduced jitter under noisy observations
+**Bootstrap phase**  
+When no prior pose exists, the system commits to the **single highest-weight particle** to establish an initial reference pose, avoiding unstable averaging under symmetry.
+
+**Tracking phase**  
+Once a reference pose is available:
+- Particles are filtered using **position and orientation gates** relative to the previous estimate
+- If the accumulated weight of inlier particles exceeds a minimum threshold, the pose is computed via **weighted mean aggregation**
+- Otherwise, the system falls back to the maximum-weight hypothesis
+
+The final pose is further stabilized using:
+- **Orientation gating** to reject inconsistent hypotheses
+- **Exponential moving average (EMA)** smoothing for temporal continuity
+
+This design enforces stability without assuming spatial density, enabling **robust symmetry resolution through time rather than instantaneous clustering**.
 
 ---
 
