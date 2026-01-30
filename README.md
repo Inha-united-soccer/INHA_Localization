@@ -1,13 +1,13 @@
 <div align="center">
 
-# ⚽️ INHA Vision
+# ⚽️ INHA Localization
 **Advanced Autonomous Agent for Humanoid Soccer**
 
 [![ROS2](https://img.shields.io/badge/ROS2-Humble-3490dc.svg?style=for-the-badge&logo=ros&logoColor=white)](https://docs.ros.org/en/humble/)
 [![C++](https://img.shields.io/badge/C++-17-00599C.svg?style=for-the-badge&logo=c%2B%2B&logoColor=white)](https://en.cppreference.com/w/cpp/17)
 [![License](https://img.shields.io/badge/License-Apache_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
-*robust Detection • real-time inference • 3D position estimation*
+*2D pose estimation • sensor fusion • *
 
 ---
 </div>
@@ -44,7 +44,7 @@ Detected objects are converted from image space into metric 3D positions:
 
 The detailed system architecture is illustrated in the figure below.
 <p align="center">
-  <img src="images/vision_pipeline.png" width="800"/>
+  <img src="images/localization_pipeline.png" width="800"/>
 </p>
 
 ---
