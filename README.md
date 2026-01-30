@@ -97,38 +97,28 @@ The final pose is further stabilized using:
 This design enforces stability without assuming spatial density, enabling **robust symmetry resolution through time rather than instantaneous clustering**.
 
 ---
-
-## Performance Evaluation
 ## Performance Evaluation
 
 Localization accuracy was evaluated using **Absolute Pose Error (APE)** with  
 **SE(3) Umeyama alignment**.
 
-<table border="0" cellspacing="0" cellpadding="0">
-<tr>
-<td width="55%" valign="top" align="center">
+<p align="center">
+  <img src="images/localization_evo.png" width="360"/><br>
+  <em>APE over time under SE(3) Umeyama alignment.</em>
+</p>
 
-<img src="images/localization_evo.png" width="360"/><br>
-<em>APE over time under SE(3) Umeyama alignment.</em>
+### Δ Translation Error (meters)
 
-</td>
-<td width="45%" valign="top">
-
-<b>Δ Translation Error (meters)</b><br><br>
-
-<div>
-Mean&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>0.17 m</b><br>
-Median&nbsp;&nbsp; 0.15 m<br>
-RMSE&nbsp;&nbsp;&nbsp;&nbsp; 0.19 m<br>
-Max&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 0.54 m
-</div>
-
-</td>
-</tr>
-</table>
+| Metric | Value |
+|------|------:|
+| Mean | **0.17 m** |
+| Median | 0.15 m |
+| RMSE | 0.19 m |
+| Max | 0.54 m |
 
 > Evaluation over **153,555 poses**,  
 > **203 m trajectory**, **455 s duration**
+
 ---
 ## System Architecture
 
